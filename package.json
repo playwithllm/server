@@ -1,0 +1,68 @@
+{
+  "name": "nodejs-boilerplate",
+  "version": "1.1.1",
+  "description": "[![License](https://img.shields.io/badge/license-MIT-blue.svg)](https://opensource.org/licenses/MIT)",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs",
+    "test": "test"
+  },
+  "scripts": {
+    "test": "jest",
+    "test:watch": "jest --watch --verbose",
+    "start": "node src/start.js",
+    "dev": "nodemon src/start.js",
+    "start:prod": "NODE_ENV=production pm2 start src/start.js",
+    "stop:prod": "pm2 stop src/start.js",
+    "logs:prod": "pm2 logs src/start.js",
+    "restart:prod": "NODE_ENV=production pm2 restart src/start.js",
+    "create-domain": "zx scripts/dev/domain-generator.js",
+    "bump-version": "npm version patch -m 'Bump version to %s'",
+    "migrate": "node src/migration-runner.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@octokit/rest": "^20.1.1",
+    "@sendgrid/mail": "^8.1.4",
+    "bcrypt": "^5.1.1",
+    "compression": "^1.7.4",
+    "connect-mongo": "^5.1.0",
+    "cookie-parser": "^1.4.6",
+    "cors": "^2.8.5",
+    "cron": "^3.1.6",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "express-session": "^1.18.0",
+    "helmet": "^7.1.0",
+    "joi": "^17.12.3",
+    "lodash": "^4.17.21",
+    "minimist": "^1.2.8",
+    "mongoose": "^8.3.0",
+    "morgan": "^1.10.0",
+    "nodemon": "^3.1.0",
+    "octokit": "^3.2.1",
+    "passport": "^0.7.0",
+    "passport-github2": "^0.1.12",
+    "passport-google-oauth20": "^2.0.0",
+    "passport-local": "^1.0.0",
+    "pm2": "^5.3.1",
+    "short-uuid": "^5.2.0",
+    "ulid": "^2.3.0",
+    "validator": "^13.11.0",
+    "winston": "^3.13.0",
+    "winston-daily-rotate-file": "^5.0.0",
+    "winston-loggly-bulk": "^3.3.0"
+  },
+  "devDependencies": {
+    "@faker-js/faker": "^8.4.1",
+    "jest": "^29.7.0",
+    "mongodb-memory-server": "^9.1.8",
+    "supertest": "^6.3.4",
+    "zx": "^8.0.1"
+  },
+  "volta": {
+    "node": "20.12.2"
+  }
+}
