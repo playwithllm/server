@@ -6,7 +6,7 @@ const {
   getByGitHubId,
   create,
   updateById,
-} = require('../domains/user/service');
+} = require('../domains/admin/user/service');
 const { AppError } = require('../libraries/error-handling/AppError');
 
 const getGitHubStrategy = () => {

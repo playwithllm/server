@@ -1,5 +1,5 @@
 const mongoose = require('mongoose');
-const { baseSchema } = require('../../libraries/db/base-schema');
+const { baseSchema } = require('../../../libraries/db/base-schema');
 
 const resourceSchema = new mongoose.Schema({
   label: {

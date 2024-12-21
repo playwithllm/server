@@ -1,6 +1,7 @@
 const express = require('express');
-const logger = require('../../libraries/log/logger');
-const { AppError } = require('../../libraries/error-handling/AppError');
+const Joi = require('joi');
+const logger = require('../../../libraries/log/logger');
+const { AppError } = require('../../../libraries/error-handling/AppError');
 
 const {
   create,
@@ -9,6 +10,8 @@ const {
   getById,
   updateById,
   deleteById,
+  getAllGroupedByType,
+  updateRolePermissions,
 } = require('./service');
 
 const {
@@ -17,11 +20,11 @@ const {
   idSchema,
   searchSchema,
 } = require('./request');
-const { validateRequest } = require('../../middlewares/request-validate');
-const { logRequest } = require('../../middlewares/log');
-const { isAuthorized } = require('../../middlewares/auth/authorization');
+const { validateRequest } = require('../../../middlewares/request-validate');
+const { logRequest } = require('../../../middlewares/log');
+const { isAuthorized } = require('../../../middlewares/auth/authorization');
 
-const model = 'Resource';
+const model = 'Role';
 
 const routes = () => {
   const router = express.Router();
@@ -33,11 +36,6 @@ const routes = () => {
     validateRequest({ schema: searchSchema, isQuery: true }),
     async (req, res, next) => {
       try {
-        console.log('req', {
-          url: req.url,
-          query: req.query,
-          originalUrl: req.originalUrl,
-        });
         const items = await search(req.query);
         res.json(items);
       } catch (error) {

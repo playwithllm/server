@@ -60,7 +60,7 @@ const sendVerificationEmail = async (email, verificationToken) => {
 
     // Load and compile the HTML template
     const htmlContent = await loadTemplate('verification2.html', {
-      appName: 'CommitStreams',
+      appName: 'PlayWithLLM',
       userEmail: email,
       verificationLink: verificationLink,
       expiryHours: '24'

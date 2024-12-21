@@ -5,7 +5,7 @@ const {
   getByGoogleId,
   create,
   updateById,
-} = require('../domains/user/service');
+} = require('../domains/admin/user/service');
 
 const getGoogleStrategy = () => {
   return new GoogleStrategy(

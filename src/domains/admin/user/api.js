@@ -1,6 +1,6 @@
 const express = require('express');
-const logger = require('../../libraries/log/logger');
-const { AppError } = require('../../libraries/error-handling/AppError');
+const logger = require('../../../libraries/log/logger');
+const { AppError } = require('../../../libraries/error-handling/AppError');
 
 const {
   create,
@@ -22,9 +22,9 @@ const {
   searchSchema,
   updateUserRoleSchema,
 } = require('./request');
-const { validateRequest } = require('../../middlewares/request-validate');
-const { logRequest } = require('../../middlewares/log');
-const { isAuthorized } = require('../../middlewares/auth/authorization');
+const { validateRequest } = require('../../../middlewares/request-validate');
+const { logRequest } = require('../../../middlewares/log');
+const { isAuthorized } = require('../../../middlewares/auth/authorization');
 
 const model = 'User';
 

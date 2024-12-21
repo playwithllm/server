@@ -9,7 +9,7 @@ const {
   findByVerificationToken,
   refreshVerificationToken,
   completeEmailVerification,
-} = require('../domains/user/service');
+} = require('../domains/admin/user/service');
 const { AppError } = require('../libraries/error-handling/AppError');
 const { sendVerificationEmail } = require('../libraries/email/emailService');
 

@@ -1,4 +1,4 @@
-const Resource = require('../domains/resource/schema');
+const Resource = require('../domains/admin/resource/schema');
 
 const data = {
   resources: [

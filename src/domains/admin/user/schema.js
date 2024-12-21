@@ -1,5 +1,5 @@
 const mongoose = require('mongoose');
-const { baseSchema } = require('../../libraries/db/base-schema');
+const { baseSchema } = require('../../../libraries/db/base-schema');
 
 const schema = new mongoose.Schema({
   // Core user fields
@@ -124,26 +124,6 @@ const schema = new mongoose.Schema({
     type: Boolean,
     default: false,
   },
-
-  // Commitstreams related
-  csFollowers: [
-    {
-      _id: { type: mongoose.Schema.Types.ObjectId },
-      date: { type: Date, default: Date.now },
-    },
-  ],
-  csFollowing: [
-    {
-      _id: { type: mongoose.Schema.Types.ObjectId },
-      date: { type: Date, default: Date.now },
-    },
-  ],
-  csFollowingRepositories: [
-    {
-      _id: { type: mongoose.Schema.Types.ObjectId },
-      date: { type: Date, default: Date.now },
-    },
-  ],
   // Roles related
   role: {
     type: String,

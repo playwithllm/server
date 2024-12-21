@@ -25,7 +25,7 @@ const {
 
 const { AppError } = require('./libraries/error-handling/AppError');
 
-const { getClientPermissionsByRoleIdentifierSync } = require('./domains/role/service');
+const { getClientPermissionsByRoleIdentifierSync } = require('./domains/admin/role/service');
 
 let connection;
 

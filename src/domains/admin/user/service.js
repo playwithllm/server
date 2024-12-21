@@ -1,7 +1,7 @@
-const logger = require('../../libraries/log/logger');
+const logger = require('../../../libraries/log/logger');
 const Model = require('./schema');
 const Role = require('../role/schema');
-const { AppError } = require('../../libraries/error-handling/AppError');
+const { AppError } = require('../../../libraries/error-handling/AppError');
 const crypto = require('crypto');
 
 const model = 'user';

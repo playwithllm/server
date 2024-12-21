@@ -1,5 +1,5 @@
-const User = require('../domains/user/schema');
-const Role = require('../domains/role/schema');
+const User = require('../domains/admin/user/schema');
+const Role = require('../domains/admin/role/schema');
 const bcrypt = require('bcrypt');
 const config = require('../configs');
 const { ROLES } = require('./constants');

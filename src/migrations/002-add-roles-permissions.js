@@ -1,4 +1,4 @@
-const Model = require('../domains/role/schema');
+const Model = require('../domains/admin/role/schema');
 const { ROLES } = require('./constants');
 
 const data = {

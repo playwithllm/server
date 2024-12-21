@@ -4,6 +4,7 @@ const schema = Joi.object({
   NODE_ENV: Joi.string()
     .valid('development', 'production', 'test')
     .default('development'),
+  BYPASS_AUTH_FOR_DEVELOPMENT: Joi.boolean().default(false),
   MONGODB_URI: Joi.string().required(),
   DB_NAME: Joi.string().required(),
   RATE: Joi.number().min(0).required(),
