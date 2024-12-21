@@ -1,0 +1,57 @@
+version: '3.8'
+
+services:
+  auth:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.auth
+    ports:
+      - "4000:4000"
+    environment:
+      - NODE_ENV=production
+      - MONGODB_URI=mongodb://mongodb:27017/auth
+    depends_on:
+      - mongodb
+      
+  business:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.business
+    ports:
+      - "4001:4001"
+    environment:
+      - NODE_ENV=production
+      - MONGODB_URI=mongodb://mongodb:27017/business
+    depends_on:
+      - mongodb
+      - rabbitmq
+      - auth
+      
+  inference:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.inference
+    ports:
+      - "4002:4002"
+    environment:
+      - NODE_ENV=production
+      - MONGODB_URI=mongodb://mongodb:27017/inference
+    depends_on:
+      - mongodb
+      - rabbitmq
+      
+  mongodb:
+    image: mongo:latest
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+      
+  rabbitmq:
+    image: rabbitmq:3-management
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+
+volumes:
+  mongodb_data: 

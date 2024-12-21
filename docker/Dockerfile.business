@@ -1,0 +1,7 @@
+FROM node:20-alpine
+WORKDIR /app
+COPY package*.json ./
+COPY src/shared ./src/shared
+COPY src/services/business ./src/services/business
+RUN npm install --production
+CMD ["npm", "run", "start:business"] 
