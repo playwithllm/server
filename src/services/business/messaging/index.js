@@ -1,5 +1,6 @@
 const RabbitMQClient = require('../../../shared/libraries/util/rabbitmq');
 const logger = require('../../../shared/libraries/log/logger');
+const eventEmitter = require('../../../shared/libraries/events/eventEmitter');
 
 const RABBITMQ_URL = 'amqp://localhost:5672';
 const INFERENCE_QUEUE = 'inference_queue';
@@ -8,6 +9,7 @@ const BUSINESS_QUEUE = 'business_queue';
 class BusinessMessaging {
   constructor() {
     this.client = new RabbitMQClient(RABBITMQ_URL);
+    eventEmitter.on(eventEmitter.EVENT_TYPES.INFERENCE_REQUEST, this.sendInferenceRequest.bind(this));
   }
 
   async initialize() {
@@ -35,6 +37,8 @@ class BusinessMessaging {
     try {
       logger.info('Received inference response:', content);
       // Handle the inference response here
+      // Emit the event with the inference response
+      eventEmitter.emit(eventEmitter.EVENT_TYPES.INFERENCE_RESPONSE, content);
       // You might want to update a database or notify a client
       this.client.ack(msg);
     } catch (error) {
@@ -45,8 +49,9 @@ class BusinessMessaging {
 
   async sendInferenceRequest(request) {
     try {
-      logger.info('Sending inference request:', request);
-      await this.client.publishMessage(INFERENCE_QUEUE, request);
+      console.log('sendInferenceRequest', request.message);
+      logger.info('Sending inference request:', request.message);
+      await this.client.publishMessage(INFERENCE_QUEUE, request.message);
       logger.info('Sent inference request successfully');
     } catch (error) {
       logger.error('Failed to send inference request:', error);

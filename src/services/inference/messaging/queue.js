@@ -10,7 +10,8 @@ let client = null;
 
 // Mock inference processing function
 async function processInference(data) {
-  const response = await generateResponse(data.prompt);
+  console.log('processInference\t', data)
+  const response = await generateResponse(data);
   logger.info('Inference response:', response);
   return {
     success: true,

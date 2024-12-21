@@ -12,12 +12,12 @@ const { Ollama } = require('ollama');
 async function generateResponse(prompt) {
   try {
     const ollama = new Ollama();
-    console.log(ollama)
+    console.log('generateResponse\t', prompt)
     const response = await ollama.chat({
       model: 'llama3.2',
       messages: [{ role: 'user', content: prompt }],
     })
-    console.log(response)
+    console.log('generateResponse\t', response)
     return response.message;
   } catch (error) {
     console.error('Error generating response:', error);
