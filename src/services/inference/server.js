@@ -1,5 +1,5 @@
 const logger = require('../../shared/libraries/log/logger');
-const { initialize } = require('./messages/queue');
+const { initialize } = require('./messaging/queue');
 
 class InferenceServer {
   async start() {
