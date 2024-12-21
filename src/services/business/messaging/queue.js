@@ -1,27 +1,37 @@
-const { Queue } = require('bullmq');
-const { redisConfig } = require('../../../shared/config/redis');
-// Import the result worker
-require('./result-worker');  // This will initialize the worker when the file is loaded
+const RabbitMQClient = require('../../../shared/libraries/util/rabbitmq');
+const logger = require('../../../shared/libraries/log/logger');
 
-const INFERENCE_REQUEST_QUEUE = 'inference-requests';
+const RABBITMQ_URL = 'amqp://localhost:5672';
+const INFERENCE_QUEUE = 'inference_queue';
+const BUSINESS_QUEUE = 'business_queue';
 
-// Create queue for sending inference requests
-const inferenceRequestQueue = new Queue(INFERENCE_REQUEST_QUEUE, {
-  connection: redisConfig,
-});
+let client = null;
 
-// Fire-and-forget function to send inference requests
+const initialize = async () => {
+  if (!client) {
+    client = new RabbitMQClient(RABBITMQ_URL);
+    await client.connect();
+    await client.setupQueue(INFERENCE_QUEUE);
+    await client.setupQueue(BUSINESS_QUEUE);
+    logger.info('RabbitMQ client initialized');
+  }
+};
+
 const sendInferenceRequest = async (data) => {
   try {
-    console.log('Sending inference request:', data);
-    await inferenceRequestQueue.add('inference-job', data);
-    console.log('Inference request queued successfully');
+    if (!client) {
+      await initialize();
+    }
+    logger.info('Sending inference request:', data);
+    await client.publishMessage(INFERENCE_QUEUE, data);
+    logger.info('Inference request sent successfully');
   } catch (error) {
-    console.error('Error queuing inference request:', error);
+    logger.error('Error sending inference request:', error);
     throw error;
   }
 };
 
 module.exports = {
   sendInferenceRequest,
+  initialize
 }; 

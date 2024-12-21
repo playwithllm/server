@@ -36,11 +36,10 @@ class BusinessMessaging {
       logger.info('Received inference response:', content);
       // Handle the inference response here
       // You might want to update a database or notify a client
-      
-      msg.channel.ack(msg);
+      this.client.ack(msg);
     } catch (error) {
       logger.error('Error processing inference response:', error);
-      msg.channel.nack(msg, false, false);
+      this.client.nack(msg, true);
     }
   }
 
