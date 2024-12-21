@@ -37,6 +37,10 @@ const schema = Joi.object({
   // SendGrid Configuration
   SENDGRID_API_KEY: Joi.string().required(),
   SENDGRID_FROM_EMAIL: Joi.string().email().required(),
+
+  // redis configuration
+  REDIS_HOST: Joi.string().required(),
+  REDIS_PORT: Joi.number().required(),
 });
 
 module.exports = schema;

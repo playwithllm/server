@@ -1,11 +1,15 @@
-const messaging = require('./messaging');
 const logger = require('../../shared/libraries/log/logger');
+const { initialize } = require('./messages/queue');
 
 class InferenceServer {
   async start() {
     try {
-      await messaging.initialize();
-      logger.info('Inference service started successfully');
+      logger.info('Starting inference service...');
+      
+      // Initialize queue workers - this will start listening for messages
+      await initialize();
+      
+      logger.info('Inference service started successfully and listening for messages');
     } catch (error) {
       logger.error('Failed to start inference service:', error);
       throw error;

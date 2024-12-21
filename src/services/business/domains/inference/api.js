@@ -20,7 +20,7 @@ const {
 const { validateRequest } = require('../../../../shared/middlewares/request-validate');
 const { logRequest } = require('../../../../shared/middlewares/log');
 const { isAuthorized } = require('../../../../shared/middlewares/auth/authorization');
-const messaging = require('../../messaging');
+const { sendInferenceRequest } = require('../../messaging/queue');
 
 
 const model = 'Inference';
@@ -88,7 +88,7 @@ const routes = () => {
       try {
         const item = await create(req.body);
         // post a message to inference service through rabbitmq
-        await messaging.sendInferenceRequest(item);
+        await sendInferenceRequest(item);
 
         res.status(201).json(item);
       } catch (error) {
