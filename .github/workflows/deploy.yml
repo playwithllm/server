@@ -47,7 +47,7 @@ jobs:
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SSH_KEY }} # SSH_KEY is the private key of the ubuntu server, public key must go to authorized_keys file
           script: |
-            cd /var/www/commitstreams-server
+            cd /var/www/playwithllm-server
             export NVM_DIR=~/.nvm
             source ~/.nvm/nvm.sh
 

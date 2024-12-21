@@ -38,7 +38,7 @@ async function populateUsers() {
     console.log('Data populated');
 }
 
-mongoose.connect('mongodb://localhost:27017/commitstreams').then(() => {
+mongoose.connect('mongodb://localhost:27017/pwllmdb').then(() => {
     console.log('Connected to MongoDB');
     populateUsers().then(() => {
       mongoose.connection.close();

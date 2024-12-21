@@ -10,15 +10,10 @@
   "scripts": {
     "test": "jest",
     "test:watch": "jest --watch --verbose",
-    "start": "node src/start.js",
-    "dev": "nodemon src/start.js",
-    "start:prod": "NODE_ENV=production pm2 start src/start.js",
-    "stop:prod": "pm2 stop src/start.js",
-    "logs:prod": "pm2 logs src/start.js",
-    "restart:prod": "NODE_ENV=production pm2 restart src/start.js",
-    "create-domain": "zx scripts/dev/domain-generator.js",
-    "bump-version": "npm version patch -m 'Bump version to %s'",
-    "migrate": "node src/migration-runner.js"
+    "start:auth": "nodemon src/services/auth/start.js",
+    "start:business": "nodemon src/services/business/start.js",
+    "start:inference": "nodemon src/services/inference/start.js",
+    "dev:all": "nodemon src/index.js"
   },
   "keywords": [],
   "author": "",
@@ -26,6 +21,7 @@
   "dependencies": {
     "@octokit/rest": "^20.1.1",
     "@sendgrid/mail": "^8.1.4",
+    "amqplib": "^0.10.5",
     "bcrypt": "^5.1.1",
     "compression": "^1.7.4",
     "connect-mongo": "^5.1.0",
