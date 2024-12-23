@@ -3,6 +3,8 @@ const express = require('express');
 const helmet = require('helmet');
 const cookieParser = require('cookie-parser');
 const cors = require('cors');
+const { Server } = require('socket.io');
+const eventEmitter = require('../../shared/libraries/events/eventEmitter');
 
 const passport = require('passport');
 const session = require('express-session');
@@ -17,6 +19,7 @@ const { connectWithMongoDb } = require('../../shared/libraries/db');
 const businessMessaging = require('./messaging');
 
 let connection;
+let io;
 
 // Helper function to create consistent trimmed user object
 const createTrimmedUser = (user) => ({
@@ -31,62 +34,6 @@ const createTrimmedUser = (user) => ({
   role: user.role,
   permissions: user.permissions,
 });
-
-const handleAuthCallback = (strategy) => {
-  return [
-    function (req, res, next) {
-      passport.authenticate(
-        strategy,
-        {
-          failureRedirect: `${config.CLIENT_HOST}/login`,
-        },
-        (err, user, info, status) => {
-          if (err || !user) {
-            logger.error('Failed to authenticate user', err);
-            return res.redirect(
-              `${config.CLIENT_HOST}/login?error=${err?.name}`
-            );
-          }
-
-          const trimmedUser = createTrimmedUser(user);
-          req.logIn(trimmedUser, function (err) {
-            if (err) {
-              return res.redirect(
-                `${config.CLIENT_HOST}/login?error=failed-to-authenticate`
-              );
-            }
-            logger.info('saving session for user', { user: trimmedUser });
-            req.session.userId = trimmedUser._id.toString();
-            req.session.sessionId = req.sessionID;
-            req.session.save((err) => {
-              if (err) {
-                logger.error('Failed to save session', err);
-              } else {
-                logger.info('Session saved');
-              }
-            });
-
-            next();
-          });
-        }
-      )(req, res, next);
-    },
-    function (req, res) {
-      if (strategy === 'github') {
-        logger.info('/api/auth/github/callback', {
-          username: req.user.username,
-        });
-      }
-      const userId = req.user._id.toString();
-      res.cookie('userId', userId, {
-        httpOnly: true,
-        secure: true,
-        sameSite: 'lax',
-      });
-      res.redirect(`${config.CLIENT_HOST}/login-success`);
-    },
-  ];
-};
 
 const createExpressApp = () => {
   const expressApp = express();
@@ -140,11 +87,57 @@ const createExpressApp = () => {
   return expressApp;
 };
 
+const setupWebSocket = (server) => {
+  io = new Server(server, {
+    cors: {
+      origin: config.CLIENT_HOST,
+      methods: ['GET', 'POST'],
+      credentials: true
+    }
+  });
+
+  // Set up event listener for inference responses
+  eventEmitter.on(eventEmitter.EVENT_TYPES.INFERENCE_RESPONSE, (data) => {
+    // Broadcast the inference response to all connected clients
+    io.emit('inferenceResponse', data);
+    logger.info('Broadcasted inference response to all clients');
+  });
+
+  io.on('connection', (socket) => {
+    logger.info(`Client connected: ${socket.id}`);
+
+    // Handle client authentication
+    socket.on('authenticate', (token) => {
+      // TODO: Implement authentication logic
+      logger.info(`Client ${socket.id} attempting authentication`);
+    });
+
+    // Handle disconnection
+    socket.on('disconnect', () => {
+      logger.info(`Client disconnected: ${socket.id}`);
+    });
+
+    // Example: Handle custom events
+    socket.on('inferenceRequest', (data) => {
+      logger.info(`Received message from ${socket.id}:`, data);
+      // Handle the message
+      eventEmitter.emit(eventEmitter.EVENT_TYPES.INFERENCE_REQUEST, data);
+    });
+  });
+
+  return io;
+};
+
 async function startWebServer() {
   logger.info('Starting web server...');
   const expressApp = createExpressApp();
   const APIAddress = await openConnection(expressApp);
   logger.info(`Server is running on ${APIAddress.address}:${APIAddress.port}`);
+  
+  // Setup WebSocket after HTTP server is created
+  setupWebSocket(connection);
+  logger.info('WebSocket server initialized');
+
   await connectWithMongoDb();
 
   // Initialize messaging
@@ -196,4 +189,4 @@ function defineErrorHandlingMiddleware(expressApp) {
   });
 }
 
-module.exports = { createExpressApp, startWebServer, stopWebServer };
+module.exports = { createExpressApp, startWebServer, stopWebServer, io };

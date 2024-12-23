@@ -1,8 +1,9 @@
 const RabbitMQClient = require('../../../shared/libraries/util/rabbitmq');
 const logger = require('../../../shared/libraries/log/logger');
+const eventEmitter = require('../../../shared/libraries/events/eventEmitter');
 
 // Queue names should match between services
-const RABBITMQ_URL = 'amqp://localhost:5672';
+const RABBITMQ_URL = process.env.RABBITMQ_URL || 'amqp://localhost:5672';
 const INFERENCE_QUEUE = 'inference_queue';  // Receives requests from business service
 const BUSINESS_QUEUE = 'business_queue';    // Sends responses back to business service
 
@@ -35,15 +36,16 @@ class InferenceMessaging {
   async handleInferenceResponse(content, msg) {
     try {
       logger.info('Received inference response:', content);
-      // Handle the inference response here
-      // You might want to update a database or notify a client
       
-     // msg.channel.ack(msg);
+      // Emit the event with the inference response
+      eventEmitter.emit(eventEmitter.EVENT_TYPES.INFERENCE_RESPONSE, content);
+      
+      await this.client.ack(msg);
     } catch (error) {
       logger.error('Error processing inference response:', error);
-       // Safely handle nack with null checks
-       if (msg && msg.channel) {
-        msg.channel.nack(msg, false, false);
+      // Safely handle nack with null checks
+      if (msg) {
+        await this.client.nack(msg, false, false);
       } else {
         logger.error('Cannot nack message - invalid message format');
       }
