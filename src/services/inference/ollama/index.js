@@ -1,23 +1,17 @@
 const { Ollama } = require('ollama');
+const eventEmitter = require('../../../shared/libraries/events/eventEmitter'); // Import EventEmitter
 
-/**
- * Generates a response using the Ollama model
- * @param {string} prompt - The user's input prompt
- * @param {Object} options - Optional configuration parameters
- * @param {string} options.model - The model to use (defaults to 'llama2')
- * @param {number} options.temperature - Temperature for response generation (0-1)
- * @param {number} options.topP - Top-p sampling parameter (0-1)
- * @returns {Promise<string>} The generated response
- */
+const modelName = 'llama3.2';
+
 async function generateResponse(prompt) {
   try {
     const ollama = new Ollama();
-    console.log('generateResponse\t', prompt)
+    console.log('generateResponse\t', prompt);
     const response = await ollama.chat({
-      model: 'llama3.2',
+      model: modelName,
       messages: [{ role: 'user', content: prompt }],
-    })
-    console.log('generateResponse\t', response)
+    });
+    console.log('generateResponse\t', response);
     return response.message;
   } catch (error) {
     console.error('Error generating response:', error);
@@ -25,6 +19,30 @@ async function generateResponse(prompt) {
   }
 }
 
+async function generateResponseStream(prompt) {
+  try {
+    const ollama = new Ollama();
+    console.log('generateResponseStream\t', prompt);
+    const response = await ollama.chat({
+      model: modelName,
+      messages: [{ role: 'user', content: prompt }],
+      stream: true,
+    });
+    for await (const part of response) {
+      if(part.done) {
+        eventEmitter.emit(eventEmitter.EVENT_TYPES.INFERENCE_STREAM_CHUNK_END, part); // Emit event for end of stream
+        return '';
+      }
+      eventEmitter.emit(eventEmitter.EVENT_TYPES.INFERENCE_STREAM_CHUNK, part); // Emit event for each chunk
+    }
+    return 'DONE';
+  } catch (error) {
+    console.error('Error generating response stream:', error);
+    return error;
+  }
+}
+
 module.exports = {
-  generateResponse
+  generateResponse,
+  generateResponseStream,
 };

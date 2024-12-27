@@ -9,7 +9,10 @@ const BUSINESS_QUEUE = 'business_queue';
 class BusinessMessaging {
   constructor() {
     this.client = new RabbitMQClient(RABBITMQ_URL);
-    eventEmitter.on(eventEmitter.EVENT_TYPES.INFERENCE_REQUEST, this.sendInferenceRequest.bind(this));
+    eventEmitter.on(
+      eventEmitter.EVENT_TYPES.INFERENCE_REQUEST,
+      this.sendInferenceRequest.bind(this)
+    );
   }
 
   async initialize() {
@@ -35,10 +38,23 @@ class BusinessMessaging {
 
   async handleInferenceResponse(content, msg) {
     try {
-      logger.info('Received inference response:', content);
+      logger.info('handleInferenceResponse:', content);
       // Handle the inference response here
       // Emit the event with the inference response
-      eventEmitter.emit(eventEmitter.EVENT_TYPES.INFERENCE_RESPONSE, content);
+      // eventEmitter.emit(eventEmitter.EVENT_TYPES.INFERENCE_RESPONSE, content);
+
+      if (content.done) {
+        logger.info('Received inference response:', content);
+        // Handle the inference response here
+        // Emit the event with the inference response
+        eventEmitter.emit(eventEmitter.EVENT_TYPES.INFERENCE_STREAM_CHUNK_END, content);
+      } else {
+        logger.info('Received inference chunk response:', content);
+        // Handle the inference response here
+        // Emit the event with the inference response
+        eventEmitter.emit(eventEmitter.EVENT_TYPES.INFERENCE_STREAM_CHUNK, content);
+      }
+
       // You might want to update a database or notify a client
       this.client.ack(msg);
     } catch (error) {
@@ -60,4 +76,4 @@ class BusinessMessaging {
   }
 }
 
-module.exports = new BusinessMessaging(); 
+module.exports = new BusinessMessaging();
