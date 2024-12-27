@@ -20,6 +20,8 @@ const { connectWithMongoDb } = require('../../shared/libraries/db');
 
 const businessMessaging = require('./messaging');
 
+const { create } = require('./domains/inference/service');
+
 let connection;
 let io;
 
@@ -138,6 +140,8 @@ const setupWebSocket = (server) => {
       // logger.info(`Received message from ${socket.id}:`, data);
       console.log('Received message from:', socket.id, data);
       const dataWithConnectionId = { ...data, connectionId: socket.id };
+      // save to database
+      await create({ prompt: data.message, websocketId: socket.id, modelName: 'llama3.2-1B', inputTime: new Date(), userId: socket.id });
       // Handle the message
       console.log('event emitter', { eventEmitter });
       // eventEmitter.emit(eventEmitter.EVENT_TYPES.INFERENCE_REQUEST, dataWithConnectionId);
