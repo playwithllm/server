@@ -122,7 +122,9 @@ const setupWebSocket = (server) => {
   });
 
   io.on('connection', (socket) => {
-    logger.info(`Client connected: ${socket.id}`);
+    const clientIp = socket.handshake.headers['cf-connecting-ip'] || socket.handshake.address;
+
+    logger.info(`Client connected: ${socket.id}, IP: ${clientIp}`);
 
     // Handle client authentication
     socket.on('authenticate', (token) => {
@@ -141,7 +143,7 @@ const setupWebSocket = (server) => {
       console.log('Received message from:', socket.id, data);
       const dataWithConnectionId = { ...data, connectionId: socket.id };
       // save to database
-      await create({ prompt: data.message, websocketId: socket.id, modelName: 'llama3.2-1B', inputTime: new Date(), userId: socket.id });
+      await create({ prompt: data.message, websocketId: socket.id, modelName: 'llama3.2-1B', inputTime: new Date(), userId: socket.id, clientIp });
       // Handle the message
       console.log('event emitter', { eventEmitter });
       // eventEmitter.emit(eventEmitter.EVENT_TYPES.INFERENCE_REQUEST, dataWithConnectionId);

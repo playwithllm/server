@@ -15,6 +15,7 @@ const InferenceSchema = new mongoose.Schema(
 
     sessionId: { type: String },
     websocketId: { type: String },
+    clientIp: { type: String },
     modelName: { type: String, required: true },
     modelVersion: { type: String },
     promptTokenCount: { type: Number },
