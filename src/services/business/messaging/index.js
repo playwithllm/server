@@ -8,10 +8,6 @@ const BUSINESS_QUEUE = 'business_queue';
 
 const client = new RabbitMQClient(RABBITMQ_URL);
 
-// eventEmitter.on(
-//   eventEmitter.EVENT_TYPES.INFERENCE_REQUEST,
-//   sendInferenceRequest
-// );
 
 async function initialize() {
   try {
@@ -22,10 +18,7 @@ async function initialize() {
     await client.setupQueue(INFERENCE_QUEUE);
 
     // Setup consumer for inference responses
-    await client.consumeMessage(
-      BUSINESS_QUEUE,
-      handleInferenceResponse
-    );
+    await client.consumeMessage(BUSINESS_QUEUE, handleInferenceResponse);
 
     logger.info('Business messaging initialized successfully');
   } catch (error) {
@@ -36,14 +29,24 @@ async function initialize() {
 
 async function handleInferenceResponse(content, msg) {
   try {
-    logger.info('handleInferenceResponse:', content);
+    // logger.info('handleInferenceResponse:', content);
+    console.log('handleInferenceResponse\t', content);
 
     if (content.done) {
-      logger.info('Received inference response:', content);
-      eventEmitter.emit(eventEmitter.EVENT_TYPES.INFERENCE_STREAM_CHUNK_END, content);
+      // logger.info('Received inference response:', content);
+      console.log('emitting inference stream chunk end\t', { content });
+
+      eventEmitter.emit(
+        eventEmitter.EVENT_TYPES.INFERENCE_STREAM_CHUNK_END,
+        content
+      );
     } else {
-      logger.info('Received inference chunk response:', content);
-      eventEmitter.emit(eventEmitter.EVENT_TYPES.INFERENCE_STREAM_CHUNK, content);
+      // logger.info('Received inference chunk response:', content);
+      console.log('emitting inference stream chunk\t', { content });
+      eventEmitter.emit(
+        eventEmitter.EVENT_TYPES.INFERENCE_STREAM_CHUNK,
+        content
+      );
     }
 
     await client.ack(msg);

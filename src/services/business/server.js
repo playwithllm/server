@@ -13,7 +13,9 @@ const MongoStore = require('connect-mongo'); // For storing sessions in MongoDB
 const defineRoutes = require('./app');
 const { errorHandler } = require('../../shared/libraries/error-handling');
 const logger = require('../../shared/libraries/log/logger');
-const { addRequestIdMiddleware } = require('../../shared/middlewares/request-context');
+const {
+  addRequestIdMiddleware,
+} = require('../../shared/middlewares/request-context');
 const { connectWithMongoDb } = require('../../shared/libraries/db');
 
 const businessMessaging = require('./messaging');
@@ -92,39 +94,33 @@ const setupWebSocket = (server) => {
     cors: {
       origin: config.CLIENT_HOST,
       methods: ['GET', 'POST'],
-      credentials: true
+      credentials: true,
+    },
+  });
+
+  // INFERENCE_STREAM_CHUNK_END
+  eventEmitter.on(
+    eventEmitter.EVENT_TYPES.INFERENCE_STREAM_CHUNK_END,
+    (data) => {
+      const { connectionId, ...rest } = data;
+      console.log('INFERENCE_STREAM_CHUNK_END connectionId', connectionId);
+      io.to(connectionId).emit('inferenceResponseEnd', rest);
+      logger.info('Broadcasted INFERENCE_STREAM_CHUNK_END to all clients');
     }
+  );
+
+  // INFERENCE_STREAM_CHUNK
+  eventEmitter.on(eventEmitter.EVENT_TYPES.INFERENCE_STREAM_CHUNK, (data) => {
+    const { connectionId, ...rest } = data;
+
+    console.log('INFERENCE_STREAM_CHUNK connectionId', connectionId);
+    // Broadcast the inference response to the client that requested it
+    // io.emit('inferenceResponseChunk', data);
+    io.to(connectionId).emit('inferenceResponseChunk', rest);
   });
 
   io.on('connection', (socket) => {
     logger.info(`Client connected: ${socket.id}`);
-
-    // INFERENCE_STREAM_CHUNK_END
-    eventEmitter.on(eventEmitter.EVENT_TYPES.INFERENCE_STREAM_CHUNK_END, (data) => {
-      const { connectionId, ...rest } = data;
-      // if (!io.sockets.sockets.get(connectionId)) {
-      //   logger.warn(`Invalid connectionId: ${connectionId}`);
-      //   return;
-      // }
-      // Broadcast the inference response to the client that requested it
-      // io.emit('inferenceResponseEnd', data);
-      io.to(connectionId).emit('inferenceResponseEnd', rest);
-      logger.info('Broadcasted INFERENCE_STREAM_CHUNK_END to all clients');
-    });
-
-    // INFERENCE_STREAM_CHUNK
-    eventEmitter.on(eventEmitter.EVENT_TYPES.INFERENCE_STREAM_CHUNK, (data) => {
-      const { connectionId, ...rest } = data;
-      // if (!io.sockets.sockets.get(connectionId)) {
-      //   logger.warn(`Invalid connectionId: ${connectionId}`);
-      //   return;
-      // }
-      console.log('connectionId', connectionId);
-      // Broadcast the inference response to the client that requested it
-      // io.emit('inferenceResponseChunk', data);
-      io.to(connectionId).emit('inferenceResponseChunk', rest);
-      logger.info('Broadcasted INFERENCE_STREAM_CHUNK to client with connectionId:', connectionId);
-    });
 
     // Handle client authentication
     socket.on('authenticate', (token) => {
@@ -143,10 +139,9 @@ const setupWebSocket = (server) => {
       console.log('Received message from:', socket.id, data);
       const dataWithConnectionId = { ...data, connectionId: socket.id };
       // Handle the message
-      console.log('event emitter', {eventEmitter});
+      console.log('event emitter', { eventEmitter });
       // eventEmitter.emit(eventEmitter.EVENT_TYPES.INFERENCE_REQUEST, dataWithConnectionId);
       await businessMessaging.sendInferenceRequest(dataWithConnectionId);
-
     });
   });
 
