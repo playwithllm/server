@@ -13,7 +13,7 @@
     "start:auth": "nodemon src/services/auth/start.js",
     "start:business": "nodemon src/services/business/start.js",
     "start:inference": "nodemon src/services/inference/start.js",
-    "dev": "npm run start:auth & npm run start:business & npm run start:inference"
+    "dev": "npm run start:business & npm run start:inference"
   },
   "keywords": [],
   "author": "",

@@ -8,10 +8,10 @@ const BUSINESS_QUEUE = 'business_queue';
 
 const client = new RabbitMQClient(RABBITMQ_URL);
 
-eventEmitter.on(
-  eventEmitter.EVENT_TYPES.INFERENCE_REQUEST,
-  sendInferenceRequest
-);
+// eventEmitter.on(
+//   eventEmitter.EVENT_TYPES.INFERENCE_REQUEST,
+//   sendInferenceRequest
+// );
 
 async function initialize() {
   try {
@@ -46,10 +46,10 @@ async function handleInferenceResponse(content, msg) {
       eventEmitter.emit(eventEmitter.EVENT_TYPES.INFERENCE_STREAM_CHUNK, content);
     }
 
-    client.ack(msg);
+    await client.ack(msg);
   } catch (error) {
     logger.error('Error processing inference response:', error);
-    client.nack(msg, true);
+    await client.nack(msg, true);
   }
 }
 
@@ -66,4 +66,5 @@ async function sendInferenceRequest(request) {
 
 module.exports = {
   initialize,
+  sendInferenceRequest,
 };

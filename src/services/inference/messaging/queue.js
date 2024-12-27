@@ -41,6 +41,7 @@ async function initialize() {
         try {
           // Create unique event handlers
           const handleStreamChunk = async (part) => {
+            console.log('publishing chunk message from inf to biz', { part, connectionId })
             await client.publishMessage(BUSINESS_QUEUE, {
               originalRequest: content,
               result: part,
@@ -48,19 +49,20 @@ async function initialize() {
               done: part.done,
               connectionId,
             });
-            if (part.done) {
-              eventEmitter.removeListener(
-                eventEmitter.EVENT_TYPES.INFERENCE_STREAM_CHUNK,
-                handleStreamChunk
-              );
-              eventEmitter.removeListener(
-                eventEmitter.EVENT_TYPES.INFERENCE_STREAM_CHUNK_END,
-                handleStreamChunkEnd
-              );
-            }
+            // if (part.done) {
+            //   eventEmitter.removeListener(
+            //     eventEmitter.EVENT_TYPES.INFERENCE_STREAM_CHUNK,
+            //     handleStreamChunk
+            //   );
+            //   eventEmitter.removeListener(
+            //     eventEmitter.EVENT_TYPES.INFERENCE_STREAM_CHUNK_END,
+            //     handleStreamChunkEnd
+            //   );
+            // }
           };
 
           const handleStreamChunkEnd = async (part) => {
+            console.log('publishing end message from inf to biz', { part, connectionId })
             await client.publishMessage(BUSINESS_QUEUE, {
               originalRequest: content,
               result: part,
@@ -68,14 +70,14 @@ async function initialize() {
               done: part.done,
               connectionId,
             });
-            eventEmitter.removeListener(
-              eventEmitter.EVENT_TYPES.INFERENCE_STREAM_CHUNK,
-              handleStreamChunk
-            );
-            eventEmitter.removeListener(
-              eventEmitter.EVENT_TYPES.INFERENCE_STREAM_CHUNK_END,
-              handleStreamChunkEnd
-            );
+            // eventEmitter.removeListener(
+            //   eventEmitter.EVENT_TYPES.INFERENCE_STREAM_CHUNK,
+            //   handleStreamChunk
+            // );
+            // eventEmitter.removeListener(
+            //   eventEmitter.EVENT_TYPES.INFERENCE_STREAM_CHUNK_END,
+            //   handleStreamChunkEnd
+            // );
           };
 
           // Attach scoped event listeners

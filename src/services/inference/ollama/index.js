@@ -1,7 +1,7 @@
 const { Ollama } = require('ollama');
 const eventEmitter = require('../../../shared/libraries/events/eventEmitter'); // Import EventEmitter
 
-const modelName = 'llama3.2';
+const modelName = 'llama3.2:1b';
 
 async function generateResponse(prompt) {
   try {
@@ -9,7 +9,9 @@ async function generateResponse(prompt) {
     console.log('generateResponse\t', prompt);
     const response = await ollama.chat({
       model: modelName,
-      messages: [{ role: 'user', content: prompt }],
+      messages: [
+        { role: 'assistant', content: 'You are a helpful assistant.'},
+        { role: 'user', content: prompt }],
     });
     console.log('generateResponse\t', response);
     return response.message;
@@ -22,12 +24,13 @@ async function generateResponse(prompt) {
 async function generateResponseStream(prompt) {
   try {
     const ollama = new Ollama();
-    console.log('LLAMA WORLD\t', prompt);
+    console.log('LLAMA WORLD ', prompt);
     const response = await ollama.chat({
       model: modelName,
-      messages: [{ role: 'user', content: prompt }],
+      messages: [
+        { role: 'assistant', content: 'You are a helpful assistant.'},
+        { role: 'user', content: prompt }],
       stream: true,
-      options: { num_predict: 100 },
     });
     for await (const part of response) {
       if(part.done) {

@@ -96,35 +96,35 @@ const setupWebSocket = (server) => {
     }
   });
 
-  // INFERENCE_STREAM_CHUNK_END
-  eventEmitter.on(eventEmitter.EVENT_TYPES.INFERENCE_STREAM_CHUNK_END, (data) => {
-    const { connectionId, ...rest } = data;
-    if (!io.sockets.sockets.get(connectionId)) {
-      logger.warn(`Invalid connectionId: ${connectionId}`);
-      return;
-    }
-    // Broadcast the inference response to the client that requested it
-    // io.emit('inferenceResponseEnd', data);
-    io.to(connectionId).emit('inferenceResponseEnd', rest);
-    logger.info('Broadcasted INFERENCE_STREAM_CHUNK_END to all clients');
-  });
-
-  // INFERENCE_STREAM_CHUNK
-  eventEmitter.on(eventEmitter.EVENT_TYPES.INFERENCE_STREAM_CHUNK, (data) => {
-    const { connectionId, ...rest } = data;
-    if (!io.sockets.sockets.get(connectionId)) {
-      logger.warn(`Invalid connectionId: ${connectionId}`);
-      return;
-    }
-    console.log('connectionId', connectionId);
-    // Broadcast the inference response to the client that requested it
-    // io.emit('inferenceResponseChunk', data);
-    io.to(connectionId).emit('inferenceResponseChunk', rest);
-    logger.info('Broadcasted INFERENCE_STREAM_CHUNK to client with connectionId:', connectionId);
-  });
-
   io.on('connection', (socket) => {
     logger.info(`Client connected: ${socket.id}`);
+
+    // INFERENCE_STREAM_CHUNK_END
+    eventEmitter.on(eventEmitter.EVENT_TYPES.INFERENCE_STREAM_CHUNK_END, (data) => {
+      const { connectionId, ...rest } = data;
+      // if (!io.sockets.sockets.get(connectionId)) {
+      //   logger.warn(`Invalid connectionId: ${connectionId}`);
+      //   return;
+      // }
+      // Broadcast the inference response to the client that requested it
+      // io.emit('inferenceResponseEnd', data);
+      io.to(connectionId).emit('inferenceResponseEnd', rest);
+      logger.info('Broadcasted INFERENCE_STREAM_CHUNK_END to all clients');
+    });
+
+    // INFERENCE_STREAM_CHUNK
+    eventEmitter.on(eventEmitter.EVENT_TYPES.INFERENCE_STREAM_CHUNK, (data) => {
+      const { connectionId, ...rest } = data;
+      // if (!io.sockets.sockets.get(connectionId)) {
+      //   logger.warn(`Invalid connectionId: ${connectionId}`);
+      //   return;
+      // }
+      console.log('connectionId', connectionId);
+      // Broadcast the inference response to the client that requested it
+      // io.emit('inferenceResponseChunk', data);
+      io.to(connectionId).emit('inferenceResponseChunk', rest);
+      logger.info('Broadcasted INFERENCE_STREAM_CHUNK to client with connectionId:', connectionId);
+    });
 
     // Handle client authentication
     socket.on('authenticate', (token) => {
@@ -138,12 +138,15 @@ const setupWebSocket = (server) => {
     });
 
     // Example: Handle custom events
-    socket.on('inferenceRequest', (data) => {
+    socket.on('inferenceRequest', async (data) => {
       // logger.info(`Received message from ${socket.id}:`, data);
       console.log('Received message from:', socket.id, data);
       const dataWithConnectionId = { ...data, connectionId: socket.id };
       // Handle the message
-      eventEmitter.emit(eventEmitter.EVENT_TYPES.INFERENCE_REQUEST, dataWithConnectionId);
+      console.log('event emitter', {eventEmitter});
+      // eventEmitter.emit(eventEmitter.EVENT_TYPES.INFERENCE_REQUEST, dataWithConnectionId);
+      await businessMessaging.sendInferenceRequest(dataWithConnectionId);
+
     });
   });
 
@@ -155,7 +158,7 @@ async function startWebServer() {
   const expressApp = createExpressApp();
   const APIAddress = await openConnection(expressApp);
   logger.info(`Server is running on ${APIAddress.address}:${APIAddress.port}`);
-  
+
   // Setup WebSocket after HTTP server is created
   setupWebSocket(connection);
   logger.info('WebSocket server initialized');
