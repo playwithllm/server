@@ -96,25 +96,31 @@ const setupWebSocket = (server) => {
     }
   });
 
-  // Set up event listener for inference responses
-  // eventEmitter.on(eventEmitter.EVENT_TYPES.INFERENCE_RESPONSE, (data) => {
-  //   // Broadcast the inference response to all connected clients
-  //   io.emit('inferenceResponse', data);
-  //   logger.info('Broadcasted inference response to all clients');
-  // });
-
   // INFERENCE_STREAM_CHUNK_END
   eventEmitter.on(eventEmitter.EVENT_TYPES.INFERENCE_STREAM_CHUNK_END, (data) => {
-    // Broadcast the inference response to all connected clients
-    io.emit('inferenceResponseEnd', data);
+    const { connectionId, ...rest } = data;
+    if (!io.sockets.sockets.get(connectionId)) {
+      logger.warn(`Invalid connectionId: ${connectionId}`);
+      return;
+    }
+    // Broadcast the inference response to the client that requested it
+    // io.emit('inferenceResponseEnd', data);
+    io.to(connectionId).emit('inferenceResponseEnd', rest);
     logger.info('Broadcasted INFERENCE_STREAM_CHUNK_END to all clients');
   });
 
   // INFERENCE_STREAM_CHUNK
   eventEmitter.on(eventEmitter.EVENT_TYPES.INFERENCE_STREAM_CHUNK, (data) => {
-    // Broadcast the inference response to all connected clients
-    io.emit('inferenceResponseChunk', data);
-    logger.info('Broadcasted INFERENCE_STREAM_CHUNK to all clients');
+    const { connectionId, ...rest } = data;
+    if (!io.sockets.sockets.get(connectionId)) {
+      logger.warn(`Invalid connectionId: ${connectionId}`);
+      return;
+    }
+    console.log('connectionId', connectionId);
+    // Broadcast the inference response to the client that requested it
+    // io.emit('inferenceResponseChunk', data);
+    io.to(connectionId).emit('inferenceResponseChunk', rest);
+    logger.info('Broadcasted INFERENCE_STREAM_CHUNK to client with connectionId:', connectionId);
   });
 
   io.on('connection', (socket) => {
@@ -133,9 +139,11 @@ const setupWebSocket = (server) => {
 
     // Example: Handle custom events
     socket.on('inferenceRequest', (data) => {
-      logger.info(`Received message from ${socket.id}:`, data);
+      // logger.info(`Received message from ${socket.id}:`, data);
+      console.log('Received message from:', socket.id, data);
+      const dataWithConnectionId = { ...data, connectionId: socket.id };
       // Handle the message
-      eventEmitter.emit(eventEmitter.EVENT_TYPES.INFERENCE_REQUEST, data);
+      eventEmitter.emit(eventEmitter.EVENT_TYPES.INFERENCE_REQUEST, dataWithConnectionId);
     });
   });
 

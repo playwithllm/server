@@ -1,6 +1,6 @@
 const RabbitMQClient = require('../../../shared/libraries/util/rabbitmq');
 const logger = require('../../../shared/libraries/log/logger');
-const eventEmitter = require('../../../shared/libraries/events/eventEmitter'); // Import EventEmitter
+const eventEmitter = require('../../../shared/libraries/events/eventEmitter');
 
 const { generateResponse, generateResponseStream } = require('../ollama');
 
@@ -10,7 +10,6 @@ const BUSINESS_QUEUE = 'business_queue';
 
 let client = null;
 
-// Mock inference processing function
 async function processInference(data) {
   console.log('processInference\t', data);
   const response = await generateResponse(data);
@@ -22,27 +21,7 @@ async function processInference(data) {
   };
 }
 
-// async function processInferenceStream(data) {
-//   console.log('processInferenceStream\t', data);
-
-//   eventEmitter.on(eventEmitter.EVENT_TYPES.INFERENCE_STREAM_CHUNK, (part) => {
-//     console.log('Inference stream chunk:', part);
-//   });
-
-//   eventEmitter.on(eventEmitter.EVENT_TYPES.INFERENCE_STREAM_CHUNK_END, (part) => {
-//     console.log('Inference stream chunk end:', part);
-//   });
-
-//   const response = await generateResponseStream(data);
-//   logger.info('Inference response:', response);
-//   return {
-//     success: true,
-//     result: response,
-//     timestamp: new Date().toISOString(),
-//   };
-// }
-
-const initialize = async () => {
+async function initialize() {
   if (!client) {
     client = new RabbitMQClient(RABBITMQ_URL);
     await client.connect();
@@ -54,47 +33,70 @@ const initialize = async () => {
     // Setup consumer for inference requests
     await client.consumeMessage(
       INFERENCE_QUEUE,
-      async (content, msg, mqClient) => {
-        logger.info('Processing inference request:', content);
+      async (request, msg, mqClient) => {
+        console.log('Processing inference request:', request);
+
+        const { message: content, connectionId } = request;
 
         try {
+          // Create unique event handlers
+          const handleStreamChunk = async (part) => {
+            await client.publishMessage(BUSINESS_QUEUE, {
+              originalRequest: content,
+              result: part,
+              timestamp: new Date().toISOString(),
+              done: part.done,
+              connectionId,
+            });
+            if (part.done) {
+              eventEmitter.removeListener(
+                eventEmitter.EVENT_TYPES.INFERENCE_STREAM_CHUNK,
+                handleStreamChunk
+              );
+              eventEmitter.removeListener(
+                eventEmitter.EVENT_TYPES.INFERENCE_STREAM_CHUNK_END,
+                handleStreamChunkEnd
+              );
+            }
+          };
+
+          const handleStreamChunkEnd = async (part) => {
+            await client.publishMessage(BUSINESS_QUEUE, {
+              originalRequest: content,
+              result: part,
+              timestamp: new Date().toISOString(),
+              done: part.done,
+              connectionId,
+            });
+            eventEmitter.removeListener(
+              eventEmitter.EVENT_TYPES.INFERENCE_STREAM_CHUNK,
+              handleStreamChunk
+            );
+            eventEmitter.removeListener(
+              eventEmitter.EVENT_TYPES.INFERENCE_STREAM_CHUNK_END,
+              handleStreamChunkEnd
+            );
+          };
+
+          // Attach scoped event listeners
           eventEmitter.on(
             eventEmitter.EVENT_TYPES.INFERENCE_STREAM_CHUNK,
-            async (part) => {
-              console.log('Inference stream chunk:', part);
-              await client.publishMessage(BUSINESS_QUEUE, {
-                originalRequest: content,
-                result: part,
-                timestamp: new Date().toISOString(),
-                done: part.done,
-              });
-            }
+            handleStreamChunk
           );
 
           eventEmitter.on(
             eventEmitter.EVENT_TYPES.INFERENCE_STREAM_CHUNK_END,
-            async (part) => {
-              console.log('Inference stream chunk end:', part);
-              await client.publishMessage(BUSINESS_QUEUE, {
-                originalRequest: content,
-                result: part,
-                timestamp: new Date().toISOString(),
-                done: part.done,
-              });
-            }
+            handleStreamChunkEnd
           );
 
-          const response = await generateResponseStream(content);
-          console.log('generateResponseStream.response', response);
+          await generateResponseStream(content);
 
-          // Use the mqClient instance to acknowledge
           await mqClient.ack(msg);
 
           logger.info('Inference result sent back to business service');
         } catch (error) {
           logger.error('Error processing inference:', error);
 
-          // Send error result back to business service
           await client.publishMessage(BUSINESS_QUEUE, {
             originalRequest: content,
             error: error.message,
@@ -102,15 +104,14 @@ const initialize = async () => {
             timestamp: new Date().toISOString(),
           });
 
-          // Use the mqClient instance to negative acknowledge
-          await mqClient.nack(msg, true); // true to requeue the message
+          await mqClient.nack(msg, true);
         }
       }
     );
 
     logger.info('Inference service messaging initialized');
   }
-};
+}
 
 module.exports = {
   initialize,

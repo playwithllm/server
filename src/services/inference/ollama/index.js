@@ -22,11 +22,12 @@ async function generateResponse(prompt) {
 async function generateResponseStream(prompt) {
   try {
     const ollama = new Ollama();
-    console.log('generateResponseStream\t', prompt);
+    console.log('LLAMA WORLD\t', prompt);
     const response = await ollama.chat({
       model: modelName,
       messages: [{ role: 'user', content: prompt }],
       stream: true,
+      options: { num_predict: 100 },
     });
     for await (const part of response) {
       if(part.done) {
