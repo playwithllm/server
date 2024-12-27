@@ -97,10 +97,24 @@ const setupWebSocket = (server) => {
   });
 
   // Set up event listener for inference responses
-  eventEmitter.on(eventEmitter.EVENT_TYPES.INFERENCE_RESPONSE, (data) => {
+  // eventEmitter.on(eventEmitter.EVENT_TYPES.INFERENCE_RESPONSE, (data) => {
+  //   // Broadcast the inference response to all connected clients
+  //   io.emit('inferenceResponse', data);
+  //   logger.info('Broadcasted inference response to all clients');
+  // });
+
+  // INFERENCE_STREAM_CHUNK_END
+  eventEmitter.on(eventEmitter.EVENT_TYPES.INFERENCE_STREAM_CHUNK_END, (data) => {
     // Broadcast the inference response to all connected clients
-    io.emit('inferenceResponse', data);
-    logger.info('Broadcasted inference response to all clients');
+    io.emit('inferenceResponseEnd', data);
+    logger.info('Broadcasted INFERENCE_STREAM_CHUNK_END to all clients');
+  });
+
+  // INFERENCE_STREAM_CHUNK
+  eventEmitter.on(eventEmitter.EVENT_TYPES.INFERENCE_STREAM_CHUNK, (data) => {
+    // Broadcast the inference response to all connected clients
+    io.emit('inferenceResponseChunk', data);
+    logger.info('Broadcasted INFERENCE_STREAM_CHUNK to all clients');
   });
 
   io.on('connection', (socket) => {
