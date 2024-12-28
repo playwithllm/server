@@ -5,6 +5,7 @@ const InferenceSchema = new mongoose.Schema(
   {
     userId: { type: String, required: true },
     prompt: { type: String, required: true },
+    response: { type: String },
     status: {
       type: String,
       enum: ['pending', 'processing', 'completed', 'failed'],

@@ -21,6 +21,18 @@ const create = async (data) => {
   }
 };
 
+const getAllByWebsocketId = async (websocketId) => {
+  try {
+    const items = await Model.find({ websocketId });
+    logger.info(`getAllByWebsocketId(): ${model} fetched`, { websocketId });
+    return items;
+  } catch (error) {
+    logger.error(`getAllByWebsocketId(): Failed to get ${model}`, error);
+    throw new AppError(`Failed to get ${model}`, error.message);
+  }
+};
+
+
 const search = async (query) => {
   try {
     logger.info(`search(): ${model} search`, { query });
@@ -142,4 +154,5 @@ module.exports = {
   updateById,
   updateFields,
   deleteById,
+  getAllByWebsocketId,
 };

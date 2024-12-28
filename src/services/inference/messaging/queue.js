@@ -2,7 +2,9 @@ const RabbitMQClient = require('../../../shared/libraries/util/rabbitmq');
 const logger = require('../../../shared/libraries/log/logger');
 const eventEmitter = require('../../../shared/libraries/events/eventEmitter');
 
-const { generateResponse, generateResponseStream } = require('../ollama');
+const { getAllByWebsocketId } = require('../../business/domains/inference/service');
+
+const { generateResponse, generateResponseStream, chatResponseStream } = require('../ollama');
 
 const RABBITMQ_URL = 'amqp://localhost:5672';
 const INFERENCE_QUEUE = 'inference_queue';
@@ -36,48 +38,42 @@ async function initialize() {
       async (request, msg, mqClient) => {
         console.log('Processing inference request:', request);
 
-        const { message: content, connectionId } = request;
+        const { connectionId, prompts, _id } = request;
+
+        // console.log('prompts', prompts, _id);
+
+        if (!prompts || prompts.length === 0) {
+          logger.error('No prompts provided for inference');
+          await mqClient.ack(msg);
+          return;
+        }
 
         try {
           // Create unique event handlers
           const handleStreamChunk = async (part) => {
-            console.log('publishing chunk message from inf to biz', { part, connectionId })
+            // console.log('publishing chunk message from inf to biz', { part, connectionId })
             await client.publishMessage(BUSINESS_QUEUE, {
-              originalRequest: content,
+              // originalRequest: content,
               result: part,
               timestamp: new Date().toISOString(),
               done: part.done,
               connectionId,
+              _id
             });
-            // if (part.done) {
-            //   eventEmitter.removeListener(
-            //     eventEmitter.EVENT_TYPES.INFERENCE_STREAM_CHUNK,
-            //     handleStreamChunk
-            //   );
-            //   eventEmitter.removeListener(
-            //     eventEmitter.EVENT_TYPES.INFERENCE_STREAM_CHUNK_END,
-            //     handleStreamChunkEnd
-            //   );
-            // }
+
           };
 
           const handleStreamChunkEnd = async (part) => {
-            console.log('publishing end message from inf to biz', { part, connectionId })
+            // console.log('publishing end message from inf to biz', { part, connectionId })
             await client.publishMessage(BUSINESS_QUEUE, {
-              originalRequest: content,
+              // originalRequest: content,
               result: part,
               timestamp: new Date().toISOString(),
               done: part.done,
               connectionId,
+              _id
             });
-            // eventEmitter.removeListener(
-            //   eventEmitter.EVENT_TYPES.INFERENCE_STREAM_CHUNK,
-            //   handleStreamChunk
-            // );
-            // eventEmitter.removeListener(
-            //   eventEmitter.EVENT_TYPES.INFERENCE_STREAM_CHUNK_END,
-            //   handleStreamChunkEnd
-            // );
+
           };
 
           // Attach scoped event listeners
@@ -91,7 +87,8 @@ async function initialize() {
             handleStreamChunkEnd
           );
 
-          await generateResponseStream(content);
+          // await generateResponseStream(content);
+          await chatResponseStream(prompts);
 
           await mqClient.ack(msg);
 
