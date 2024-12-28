@@ -7,11 +7,10 @@ const model = 'inference';
 const create = async (data) => {
   try {
     const item = new Model(data);
-    item._id = new Date().getTime();
-    // const saved = await item.save();
-    // logger.info(`create(): ${model} created`, {
-    //   id: saved._id,
-    // });
+    const saved = await item.save();
+    logger.info(`create(): ${model} created`, {
+      id: saved._id,
+    });
     logger.info(`create(): ${model} created [Dummy]`, {
       data,
     });
@@ -21,6 +20,18 @@ const create = async (data) => {
     throw new AppError(`Failed to create ${model}`, error.message);
   }
 };
+
+const getAllByWebsocketId = async (websocketId) => {
+  try {
+    const items = await Model.find({ websocketId });
+    logger.info(`getAllByWebsocketId(): ${model} fetched`, { websocketId });
+    return items;
+  } catch (error) {
+    logger.error(`getAllByWebsocketId(): Failed to get ${model}`, error);
+    throw new AppError(`Failed to get ${model}`, error.message);
+  }
+};
+
 
 const search = async (query) => {
   try {
@@ -99,11 +110,27 @@ const getById = async (id) => {
 
 const updateById = async (id, data) => {
   try {
-    const item = await Model.findByIdAndUpdate(id, data, { new: true });
+    const item = await Model.findByIdAndUpdate(id, data, { new: false });
     logger.info(`updateById(): ${model} updated`, { id });
     return item;
   } catch (error) {
     logger.error(`updateById(): Failed to update ${model}`, error);
+    throw new AppError(`Failed to update ${model}`, error.message);
+  }
+};
+
+const updateFields = async (id, data) => {
+  try {
+    const item = await Model.findById(id);
+    Object.keys(data).forEach((key) => {
+      item[key] = data[key];
+    });
+    const saved = await item.save();
+    logger.info(`updateFields(): ${model} updated`, { id });
+    return saved;
+  }
+  catch (error) {
+    logger.error(`updateFields(): Failed to update ${model}`, error);
     throw new AppError(`Failed to update ${model}`, error.message);
   }
 };
@@ -125,5 +152,7 @@ module.exports = {
   count,
   getById,
   updateById,
+  updateFields,
   deleteById,
+  getAllByWebsocketId,
 };

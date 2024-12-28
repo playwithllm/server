@@ -2,12 +2,15 @@ const RabbitMQClient = require('../../../shared/libraries/util/rabbitmq');
 const logger = require('../../../shared/libraries/log/logger');
 const eventEmitter = require('../../../shared/libraries/events/eventEmitter');
 
+const { updateById } = require('../../business/domains/inference/service');
+
 const RABBITMQ_URL = 'amqp://localhost:5672';
 const INFERENCE_QUEUE = 'inference_queue';
 const BUSINESS_QUEUE = 'business_queue';
 
 const client = new RabbitMQClient(RABBITMQ_URL);
 
+const inMemoryValue = {};
 
 async function initialize() {
   try {
@@ -30,19 +33,29 @@ async function initialize() {
 async function handleInferenceResponse(content, msg) {
   try {
     // logger.info('handleInferenceResponse:', content);
-    console.log('handleInferenceResponse\t', content);
+    // console.log('handleInferenceResponse\t', content);
+
+    if (!inMemoryValue[content._id]) {
+      inMemoryValue[content._id] = '';
+    }
 
     if (content.done) {
       // logger.info('Received inference response:', content);
-      console.log('emitting inference stream chunk end\t', { content });
+      inMemoryValue[content._id] += content.result.message.content;
+      console.log('emitting inference stream chunk end\t', { content, inMemoryValue });
 
+      await updateById(content._id, { response: inMemoryValue[content._id], status: 'completed' });
+
+      // clear in-memory value
+      inMemoryValue[content._id] = '';
       eventEmitter.emit(
         eventEmitter.EVENT_TYPES.INFERENCE_STREAM_CHUNK_END,
         content
       );
     } else {
       // logger.info('Received inference chunk response:', content);
-      console.log('emitting inference stream chunk\t', { content });
+      // console.log('emitting inference stream chunk\t', { content, msg });
+      inMemoryValue[content._id] += content.result.message.content;
       eventEmitter.emit(
         eventEmitter.EVENT_TYPES.INFERENCE_STREAM_CHUNK,
         content

@@ -20,6 +20,8 @@ const { connectWithMongoDb } = require('../../shared/libraries/db');
 
 const businessMessaging = require('./messaging');
 
+const { create, getAllByWebsocketId } = require('./domains/inference/service');
+
 let connection;
 let io;
 
@@ -103,7 +105,7 @@ const setupWebSocket = (server) => {
     eventEmitter.EVENT_TYPES.INFERENCE_STREAM_CHUNK_END,
     (data) => {
       const { connectionId, ...rest } = data;
-      console.log('INFERENCE_STREAM_CHUNK_END connectionId', connectionId);
+      // console.log('INFERENCE_STREAM_CHUNK_END connectionId', connectionId);
       io.to(connectionId).emit('inferenceResponseEnd', rest);
       logger.info('Broadcasted INFERENCE_STREAM_CHUNK_END to all clients');
     }
@@ -113,14 +115,16 @@ const setupWebSocket = (server) => {
   eventEmitter.on(eventEmitter.EVENT_TYPES.INFERENCE_STREAM_CHUNK, (data) => {
     const { connectionId, ...rest } = data;
 
-    console.log('INFERENCE_STREAM_CHUNK connectionId', connectionId);
+    // console.log('INFERENCE_STREAM_CHUNK connectionId', connectionId);
     // Broadcast the inference response to the client that requested it
     // io.emit('inferenceResponseChunk', data);
     io.to(connectionId).emit('inferenceResponseChunk', rest);
   });
 
   io.on('connection', (socket) => {
-    logger.info(`Client connected: ${socket.id}`);
+    const clientIp = socket.handshake.headers['cf-connecting-ip'] || socket.handshake.address;
+
+    logger.info(`Client connected: ${socket.id}, IP: ${clientIp}`);
 
     // Handle client authentication
     socket.on('authenticate', (token) => {
@@ -137,11 +141,26 @@ const setupWebSocket = (server) => {
     socket.on('inferenceRequest', async (data) => {
       // logger.info(`Received message from ${socket.id}:`, data);
       console.log('Received message from:', socket.id, data);
-      const dataWithConnectionId = { ...data, connectionId: socket.id };
+      // save to database
+      const savedItem = await create({ prompt: data.message, websocketId: socket.id, modelName: 'llama3.2-1B', inputTime: new Date(), userId: socket.id, clientIp });
       // Handle the message
-      console.log('event emitter', { eventEmitter });
-      // eventEmitter.emit(eventEmitter.EVENT_TYPES.INFERENCE_REQUEST, dataWithConnectionId);
-      await businessMessaging.sendInferenceRequest(dataWithConnectionId);
+      console.log('saved item', { savedItem });
+
+      const previousInferences = await getAllByWebsocketId(socket.id);
+      const chatMessagesForLLM = [];
+      chatMessagesForLLM.push({ role: 'assistant', content: 'You are a helpful assistant.' });
+      if (previousInferences.length > 0) {
+        previousInferences.forEach((item) => {
+          // user - item.prompt
+          chatMessagesForLLM.push({ role: 'user', content: item.prompt });
+          // assistant - item.response
+          if (item.response) {
+            chatMessagesForLLM.push({ role: 'assistant', content: item.response });
+          }
+        });
+      }
+      console.log('chatMessagesForLLM', JSON.stringify(chatMessagesForLLM));
+      await businessMessaging.sendInferenceRequest({ prompts: chatMessagesForLLM, connectionId: socket.id, _id: savedItem._id.toString() });
     });
   });
 
