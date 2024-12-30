@@ -1,5 +1,5 @@
 const { encryptToken, decryptToken } = require('./util');
-const { updateById } = require('../domains/admin/user/service');
+const { updateById } = require('../../domains/admin/user/service');
 
 const {
   getGitHubStrategy,

@@ -9,9 +9,9 @@ const {
   findByVerificationToken,
   refreshVerificationToken,
   completeEmailVerification,
-} = require('../domains/admin/user/service');
-const { AppError } = require('../../../shared/libraries/error-handling/AppError');
-const { sendVerificationEmail } = require('../../../shared/libraries/email/emailService');
+} = require('../../domains/admin/user/service');
+const { AppError } = require('../../../../shared/libraries/error-handling/AppError');
+const { sendVerificationEmail } = require('../../../../shared/libraries/email/emailService');
 
 const verifyCallback = async (username, password, done) => {
   try {

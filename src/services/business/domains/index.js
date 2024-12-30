@@ -1,7 +1,8 @@
+const adminRoutes = require('../../business/domains/admin');
 const inferenceRoutes = require('./inference');
 
 const defineRoutes = (expressRouter) => {
-  // Mount admin routes
+  adminRoutes(expressRouter);
   inferenceRoutes(expressRouter);
 };
 

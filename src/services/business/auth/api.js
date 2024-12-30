@@ -1,18 +1,9 @@
-const configs = require('../../shared/configs');
-const express = require('express');
-const helmet = require('helmet');
-const cookieParser = require('cookie-parser');
-const cors = require('cors');
-
+const config = require('../../../shared/configs');
 const passport = require('passport');
 const session = require('express-session');
 const MongoStore = require('connect-mongo'); // For storing sessions in MongoDB
 
-const defineRoutes = require('./app');
-const { errorHandler } = require('../../shared/libraries/error-handling');
-const logger = require('../../shared/libraries/log/logger');
-const { addRequestIdMiddleware } = require('../../shared/middlewares/request-context');
-const { connectWithMongoDb } = require('../../shared/libraries/db');
+const logger = require('../../../shared/libraries/log/logger');
 const {
   getGitHubStrategy,
   clearAuthInfo,
@@ -23,11 +14,9 @@ const {
   resendVerificationEmail,
 } = require('./strategies');
 
-const { AppError } = require('../../shared/libraries/error-handling/AppError');
+const { AppError } = require('../../../shared/libraries/error-handling/AppError');
 
-const { getClientPermissionsByRoleIdentifierSync } = require('./domains/admin/role/service');
-
-let connection;
+const { getClientPermissionsByRoleIdentifierSync } = require('../domains/admin/role/service');
 
 // Helper function to create consistent trimmed user object
 const createTrimmedUser = (user) => ({
@@ -49,13 +38,13 @@ const handleAuthCallback = (strategy) => {
       passport.authenticate(
         strategy,
         {
-          failureRedirect: `${configs.CLIENT_HOST}/login`,
+          failureRedirect: `${config.CLIENT_HOST}/login`,
         },
         (err, user, info, status) => {
           if (err || !user) {
             logger.error('Failed to authenticate user', err);
             return res.redirect(
-              `${configs.CLIENT_HOST}/login?error=${err?.name}`
+              `${config.CLIENT_HOST}/login?error=${err?.name}`
             );
           }
 
@@ -63,7 +52,7 @@ const handleAuthCallback = (strategy) => {
           req.logIn(trimmedUser, function (err) {
             if (err) {
               return res.redirect(
-                `${configs.CLIENT_HOST}/login?error=failed-to-authenticate`
+                `${config.CLIENT_HOST}/login?error=failed-to-authenticate`
               );
             }
             logger.info('saving session for user', { user: trimmedUser });
@@ -94,33 +83,20 @@ const handleAuthCallback = (strategy) => {
         secure: true,
         sameSite: 'lax',
       });
-      res.redirect(`${configs.CLIENT_HOST}/login-success`);
+      res.redirect(`${config.CLIENT_HOST}/login-success`);
     },
   ];
 };
 
-const createExpressApp = () => {
-  const expressApp = express();
-  expressApp.use(addRequestIdMiddleware);
-  expressApp.use(helmet());
-  expressApp.use(express.urlencoded({ extended: true }));
-  expressApp.use(express.json());
-  expressApp.use(cookieParser());
-  expressApp.use(
-    cors({
-      origin: configs.CLIENT_HOST, // Your frontend origin
-      credentials: true,
-    })
-  );
-
+const configureAuthToExpressApp = (expressApp) => {
   passport.use(localStrategy);
   passport.use(getGitHubStrategy());
   passport.use(getGoogleStrategy());
 
-  const sessionStore = MongoStore.create({ mongoUrl: configs.MONGODB_URI }); // Store the reference
+  const sessionStore = MongoStore.create({ mongoUrl: config.MONGODB_URI }); // Store the reference
   expressApp.use(
     session({
-      secret: configs.SESSION_SECRET,
+      secret: config.SESSION_SECRET,
       resave: false,
       saveUninitialized: true,
       store: sessionStore,
@@ -140,14 +116,6 @@ const createExpressApp = () => {
     done(null, trimmedUser);
   });
 
-  expressApp.use((req, res, next) => {
-    // Log an info message for each incoming request
-    logger.info(`${req.method} ${req.originalUrl}`);
-    next();
-  });
-
-  logger.info('Express middlewares are set up');
-
   // Github authentication
   expressApp.get('/api/auth/github', passport.authenticate('github'));
 
@@ -159,7 +127,7 @@ const createExpressApp = () => {
 
   // Google authentication
   // get current logged in user data from req.user object
-  expressApp.get('/api/user', (req, res) => {
+  expressApp.get('/api/auth/me', (req, res) => {
     if (!req.user) {
       return res.status(401).send('Unauthorized');
     }
@@ -168,7 +136,7 @@ const createExpressApp = () => {
     res.json(userResponse);
   });
 
-  expressApp.post('/api/register', async (req, res, next) => {
+  expressApp.post('/api/auth/register', async (req, res, next) => {
     try {
       const { email, password } = req.body;
       const newUser = await registerUser({ email, password });
@@ -182,7 +150,7 @@ const createExpressApp = () => {
 
   // Debug email routes - only available in development
   if (process.env.NODE_ENV === 'development') {
-    const { listDebugEmails, readDebugEmail, isDebugMode } = require('../../shared/libraries/email/emailService');
+    const { listDebugEmails, readDebugEmail, isDebugMode } = require('../../../shared/libraries/email/emailService');
 
     expressApp.get('/api/debug/emails', async (req, res) => {
       if (!isDebugMode) {
@@ -205,7 +173,7 @@ const createExpressApp = () => {
     });
   }
 
-  expressApp.get('/api/verify-email', async (req, res, next) => {
+  expressApp.get('/api/auth/verify-email', async (req, res, next) => {
     try {
       const { token } = req.query;
       if (!token) {
@@ -225,7 +193,8 @@ const createExpressApp = () => {
     }
   });
 
-  expressApp.post('/api/login', async (req, res, next) => {
+  expressApp.post('/api/auth/login', async (req, res, next) => {
+    req.body.username = req.body.email;
     passport.authenticate('local', async (err, user, info) => {
       logger.info('Login attempt', { err, user, info });
       if (err) {
@@ -274,7 +243,7 @@ const createExpressApp = () => {
     })(req, res, next);
   });
 
-  expressApp.get('/api/logout', async (req, res, next) => {
+  expressApp.get('/api/auth/logout', async (req, res, next) => {
     const username = req.user?.username;
     const userId = req.user?._id;
     console.log('req.session', req.session);
@@ -305,7 +274,7 @@ const createExpressApp = () => {
       await clearAuthInfo(userId);
 
       logger.info('User logged out', { username });
-      res.redirect(`${configs.CLIENT_HOST}/login`);
+      res.redirect(`${config.CLIENT_HOST}/login`);
     });
   });
 
@@ -315,7 +284,7 @@ const createExpressApp = () => {
     passport.authenticate('google', { scope: ['profile', 'email'] })
   );
 
-  expressApp.post('/api/resend-verification', async (req, res, next) => {
+  expressApp.post('/api/auth/resend-verification', async (req, res, next) => {
     try {
       const { email } = req.body;
       logger.info('resend-verification', { email });
@@ -336,61 +305,8 @@ const createExpressApp = () => {
     }
   });
 
-  defineRoutes(expressApp);
-  defineErrorHandlingMiddleware(expressApp);
   return expressApp;
 };
 
-async function startWebServer() {
-  logger.info('Starting web server...');
-  const expressApp = createExpressApp();
-  const APIAddress = await openConnection(expressApp);
-  logger.info(`Server is running on ${APIAddress.address}:${APIAddress.port}`);
-  await connectWithMongoDb();
-  return expressApp;
-}
 
-async function stopWebServer() {
-  return new Promise((resolve) => {
-    if (connection !== undefined) {
-      connection.close(() => {
-        resolve();
-      });
-    }
-  });
-}
-
-async function openConnection(expressApp) {
-  return new Promise((resolve) => {
-    const webServerPort = configs.PORT;
-    logger.info(`Server is about to listen to port ${webServerPort}`);
-
-    connection = expressApp.listen(webServerPort, () => {
-      errorHandler.listenToErrorEvents(connection);
-      resolve(connection.address());
-    });
-  });
-}
-
-function defineErrorHandlingMiddleware(expressApp) {
-  expressApp.use(async (error, req, res, next) => {
-    // Note: next is required for Express error handlers
-    if (error && typeof error === 'object') {
-      if (error.isTrusted === undefined || error.isTrusted === null) {
-        error.isTrusted = true;
-      }
-    }
-
-    const appError = await errorHandler.handleError(error);
-    res
-      .status(error?.HTTPStatus || 500)
-      .json(
-        { ...appError, errorMessage: appError.message } || {
-          message: 'Internal server error',
-        }
-      )
-      .end();
-  });
-}
-
-module.exports = { createExpressApp, startWebServer, stopWebServer };
+module.exports = { configureAuthToExpressApp };

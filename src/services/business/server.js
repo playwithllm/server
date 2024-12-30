@@ -1,3 +1,4 @@
+const cookie = require('cookie');
 const config = require('../../shared/configs');
 const express = require('express');
 const helmet = require('helmet');
@@ -25,20 +26,6 @@ const { create, getAllByWebsocketId } = require('./domains/inference/service');
 let connection;
 let io;
 
-// Helper function to create consistent trimmed user object
-const createTrimmedUser = (user) => ({
-  _id: user._id,
-  email: user.email,
-  authType: user.authType,
-  displayName: user.displayName,
-  isAdmin: user.isAdmin,
-  isSuperAdmin: user.isSuperAdmin,
-  isDeactivated: user.isDeactivated,
-  isDemo: user.isDemo,
-  role: user.role,
-  permissions: user.permissions,
-});
-
 const createExpressApp = () => {
   const expressApp = express();
   expressApp.use(addRequestIdMiddleware);
@@ -53,29 +40,6 @@ const createExpressApp = () => {
     })
   );
 
-  const sessionStore = MongoStore.create({ mongoUrl: config.MONGODB_URI }); // Store the reference
-  expressApp.use(
-    session({
-      secret: config.SESSION_SECRET,
-      resave: false,
-      saveUninitialized: true,
-      store: sessionStore,
-    })
-  );
-
-  expressApp.use(passport.initialize());
-  expressApp.use(passport.session());
-
-  // Update serialization
-  passport.serializeUser(async function (user, done) {
-    const trimmedUser = createTrimmedUser(user);
-    done(null, trimmedUser);
-  });
-
-  passport.deserializeUser(function (trimmedUser, done) {
-    done(null, trimmedUser);
-  });
-
   expressApp.use((req, res, next) => {
     // Log an info message for each incoming request
     logger.info(`${req.method} ${req.originalUrl}`);
@@ -83,8 +47,6 @@ const createExpressApp = () => {
   });
 
   logger.info('Express middlewares are set up');
-
-  // Debug email routes - only available in development
 
   defineRoutes(expressApp);
   defineErrorHandlingMiddleware(expressApp);
@@ -121,8 +83,48 @@ const setupWebSocket = (server) => {
     io.to(connectionId).emit('inferenceResponseChunk', rest);
   });
 
+  // DISABLE_CHAT
+  eventEmitter.on(eventEmitter.EVENT_TYPES.DISABLE_CHAT, (data) => {
+    const { connectionId, ...rest } = data;
+    io.to(connectionId).emit('disableChat', rest);
+  });
+
+  io.use((socket, next) => {
+    const handshake = socket.request;
+    const cookies = cookie.parse(handshake.headers.cookie || '');
+    const sessionID = cookies['connect.sid'];
+
+    if (!sessionID) {
+      return next(new Error('Unauthorized'));
+    }
+
+    const sessionStore = MongoStore.create({ mongoUrl: config.MONGODB_URI });
+
+    session({
+      secret: config.SESSION_SECRET,
+      resave: false,
+      saveUninitialized: false,
+      store: sessionStore,
+    })(handshake, {}, () => {
+      passport.initialize()(handshake, {}, () => {
+        passport.session()(handshake, {}, () => {
+          if (handshake.user) {
+            socket.user = handshake.user;
+            next();
+          } else {
+            next(new Error('Unauthorized'));
+          }
+        });
+      });
+    });
+  });
+
   io.on('connection', (socket) => {
     const clientIp = socket.handshake.headers['cf-connecting-ip'] || socket.handshake.address;
+
+    // log the user from socket.user
+    console.log('socket.user', socket.user);
+
 
     logger.info(`Client connected: ${socket.id}, IP: ${clientIp}`);
 
@@ -139,14 +141,38 @@ const setupWebSocket = (server) => {
 
     // Example: Handle custom events
     socket.on('inferenceRequest', async (data) => {
+      const user = socket.user;
+      console.log('Authenticated user:', user);
       // logger.info(`Received message from ${socket.id}:`, data);
       console.log('Received message from:', socket.id, data);
       // save to database
-      const savedItem = await create({ prompt: data.message, websocketId: socket.id, modelName: 'llama3.2-1B', inputTime: new Date(), userId: socket.id, clientIp });
+      const savedItem = await create({ prompt: data.message, websocketId: socket.id, modelName: 'llama3.2-1B', inputTime: new Date(), userId: user._id, clientIp });
       // Handle the message
       console.log('saved item', { savedItem });
 
       const previousInferences = await getAllByWebsocketId(socket.id);
+
+      console.log('previousInferences', previousInferences);
+      // sum of item.result.prompt_eval_count
+      const totalInputTokens = previousInferences.filter((item) => item.result?.prompt_eval_count).reduce((acc, item) => {
+        return acc + item.result.prompt_eval_count;
+      }, 0);
+      // sum of item.result.eval_count
+      const totalOutputTokens = previousInferences.reduce((acc, item) => {
+        return acc + item.result?.eval_count || 0;
+      }, 0);
+
+      const totalTokensInThisDiscussion = totalInputTokens + totalOutputTokens;
+      console.log('totalTokensInThisDiscussion', totalTokensInThisDiscussion);
+
+      if(totalTokensInThisDiscussion > 1000) {
+        // disable chat
+        eventEmitter.emit(
+          eventEmitter.EVENT_TYPES.DISABLE_CHAT,
+          { connectionId: socket.id, message: 'You have exceeded the token limit for this session. Please try again later.' }
+        );
+      }
+
       const chatMessagesForLLM = [];
       chatMessagesForLLM.push({ role: 'assistant', content: 'You are a helpful assistant.' });
       if (previousInferences.length > 0) {
@@ -159,7 +185,7 @@ const setupWebSocket = (server) => {
           }
         });
       }
-      console.log('chatMessagesForLLM', JSON.stringify(chatMessagesForLLM));
+      console.log('chatMessagesForLLM', chatMessagesForLLM.length);
       await businessMessaging.sendInferenceRequest({ prompts: chatMessagesForLLM, connectionId: socket.id, _id: savedItem._id.toString() });
     });
   });

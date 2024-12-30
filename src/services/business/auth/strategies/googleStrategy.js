@@ -1,11 +1,11 @@
-const config = require('../../../shared/configs');
+const config = require('../../../../shared/configs');
 const GoogleStrategy = require('passport-google-oauth20').Strategy;
-const { AppError } = require('../../../shared/libraries/error-handling/AppError');
+const { AppError } = require('../../../../shared/libraries/error-handling/AppError');
 const {
   getByGoogleId,
   create,
   updateById,
-} = require('../domains/admin/user/service');
+} = require('../../domains/admin/user/service');
 
 const getGoogleStrategy = () => {
   return new GoogleStrategy(

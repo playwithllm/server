@@ -1,4 +1,4 @@
-const config = require('../../../shared/configs');
+const config = require('../../../../shared/configs');
 const GitHubStrategy = require('passport-github2').Strategy;
 
 const { encryptToken } = require('./util');
@@ -6,8 +6,8 @@ const {
   getByGitHubId,
   create,
   updateById,
-} = require('../domains/admin/user/service');
-const { AppError } = require('../../../shared/libraries/error-handling/AppError');
+} = require('../../domains/admin/user/service');
+const { AppError } = require('../../../../shared/libraries/error-handling/AppError');
 
 const getGitHubStrategy = () => {
   return new GitHubStrategy(
