@@ -274,7 +274,7 @@ const configureAuthToExpressApp = (expressApp) => {
       await clearAuthInfo(userId);
 
       logger.info('User logged out', { username });
-      res.redirect(`${config.CLIENT_HOST}/login`);
+      res.redirect(`${config.CLIENT_HOST}`);
     });
   });
 
