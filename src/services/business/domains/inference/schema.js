@@ -33,9 +33,6 @@ const InferenceSchema = new mongoose.Schema(
     cost: { type: Number },
     errorType: { type: String },
     errorMessage: { type: String },
-
-    inferenceType: { type: String },
-    inferenceFrom: { type: String },
   },
   { timestamps: true }
 );

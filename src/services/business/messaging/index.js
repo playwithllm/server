@@ -12,6 +12,8 @@ const client = new RabbitMQClient(RABBITMQ_URL);
 
 const inMemoryValue = {};
 
+const eventEmitters = new Map();
+
 async function initialize() {
   try {
     await client.connect();
@@ -55,6 +57,13 @@ async function handleInferenceResponse(content, msg) {
         eventEmitter.EVENT_TYPES.INFERENCE_STREAM_CHUNK_END,
         content
       );
+
+      // get the eventEmitter by content._id and broadcast the response
+      const emitter = eventEmitters.get(content._id);
+      if (emitter) {
+        emitter.emit('inferenceStreamChunkEnd', content);
+        eventEmitters.delete(content._id);
+      }
     } else {
       // logger.info('Received inference chunk response:', content);
       // console.log('emitting inference stream chunk\t', { content, msg });
@@ -63,6 +72,12 @@ async function handleInferenceResponse(content, msg) {
         eventEmitter.EVENT_TYPES.INFERENCE_STREAM_CHUNK,
         content
       );
+
+      // get the eventEmitter by content._id and broadcast the response
+      const emitter = eventEmitters.get(content._id);
+      if (emitter) {
+        emitter.emit('inferenceStreamChunk', content);
+      }
     }
 
     await client.ack(msg);
@@ -72,8 +87,11 @@ async function handleInferenceResponse(content, msg) {
   }
 }
 
-async function sendInferenceRequest(request) {
+async function sendInferenceRequest(request, eventEmitter) {
   try {
+    if (eventEmitter) {
+      eventEmitters.set(request._id.toString(), eventEmitter);
+    }
     logger.info('Publishing inference request to queue:', { _id: request._id.toString() });
     await client.publishMessage(INFERENCE_QUEUE, request);
     logger.info('Sent inference request successfully');

@@ -1,4 +1,5 @@
 const express = require('express');
+const EventEmitter = require('events');
 const logger = require('../../../../shared/libraries/log/logger');
 const { AppError } = require('../../../../shared/libraries/error-handling/AppError');
 
@@ -20,7 +21,7 @@ const {
 const { validateRequest } = require('../../../../shared/middlewares/request-validate');
 const { logRequest } = require('../../../../shared/middlewares/log');
 const { isAuthorized } = require('../../../../shared/middlewares/auth/authorization');
-
+const businessMessaging = require('../../messaging');
 
 const model = 'Inference';
 
@@ -85,11 +86,24 @@ const routes = () => {
     validateRequest({ schema: createSchema }),
     async (req, res, next) => {
       try {
-        const item = await create(req.body);
-        // post a message to inference service through rabbitmq
-        // await sendInferenceRequest(item);
+        const prompt = req.body.prompt;
+        const user = req.user;
+        const savedItem = (await create({ prompt, modelName: 'llama3.2-1B', inputTime: new Date(), userId: user._id,  })).toObject();
+        console.log('saved item', { savedItem });
+        const chatMessagesForLLM = [];
+        chatMessagesForLLM.push({ role: 'assistant', content: 'You are a helpful assistant.' });
+        chatMessagesForLLM.push({ role: 'user', content: prompt });
+        const eventEmitter = new EventEmitter();
+        eventEmitter.on('inferenceStreamChunk', async (part) => {
+          // console.log('route handler: inferenceStreamChunk', { msg: part.result.message, connectionId: savedItem._id.toString() });
+          res.write(part.result.message.content);
+        });
+        eventEmitter.on('inferenceStreamChunkEnd', async (part) => {
+          // console.log('route handler: inferenceStreamChunkEnd', { msg: part.result.message, connectionId: savedItem._id.toString() });
+          res.end();
+        });
 
-        res.status(201).json(item);
+        await businessMessaging.sendInferenceRequest({ prompts: chatMessagesForLLM, connectionId: savedItem._id.toString(), _id: savedItem._id.toString() }, eventEmitter);
       } catch (error) {
         next(error);
       }
