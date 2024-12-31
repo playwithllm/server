@@ -55,8 +55,8 @@ const search = async (query) => {
     const {
       keyword,
       page = 0,
-      orderBy = 'name',
-      order = 'asc',
+      orderBy = 'createdAt',
+      order = 'desc',
       type
     } = query ?? {};
 
