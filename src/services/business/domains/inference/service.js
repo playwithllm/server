@@ -32,22 +32,6 @@ const getAllByWebsocketId = async (websocketId) => {
   }
 };
 
-const getAllChatByUserId = async (userId) => {
-  try {
-    const items = await Model.find({
-      userId,
-      isChatMessage: true,
-    });
-    logger.info(`getAllChatByUserId(): ${model} fetched`, { userId });
-    return items;
-  } catch (error) {
-    logger.error(`getAllChatByUserId(): Failed to get ${model}`, error);
-    throw new AppError(`Failed to get ${model}`, error.message);
-  }
-};
-
-
-
 const search = async (query) => {
   try {
     logger.info(`search(): ${model} search`, { query });
@@ -134,22 +118,6 @@ const updateById = async (id, data) => {
   }
 };
 
-const updateFields = async (id, data) => {
-  try {
-    const item = await Model.findById(id);
-    Object.keys(data).forEach((key) => {
-      item[key] = data[key];
-    });
-    const saved = await item.save();
-    logger.info(`updateFields(): ${model} updated`, { id });
-    return saved;
-  }
-  catch (error) {
-    logger.error(`updateFields(): Failed to update ${model}`, error);
-    throw new AppError(`Failed to update ${model}`, error.message);
-  }
-};
-
 const deleteById = async (id) => {
   try {
     await Model.findByIdAndDelete(id);
@@ -167,7 +135,6 @@ module.exports = {
   count,
   getById,
   updateById,
-  updateFields,
   deleteById,
   getAllByWebsocketId,
 };
