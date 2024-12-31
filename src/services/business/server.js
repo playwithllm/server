@@ -223,7 +223,7 @@ async function stopWebServer() {
 
 async function openConnection(expressApp) {
   return new Promise((resolve) => {
-    const webServerPort = config.PORT_BUSINESS || 4001;
+    const webServerPort = config.PORT_BUSINESS || 4000;
     logger.info(`Server is about to listen to port ${webServerPort}`);
 
     connection = expressApp.listen(webServerPort, () => {

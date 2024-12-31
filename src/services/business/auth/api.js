@@ -43,8 +43,13 @@ const handleAuthCallback = (strategy) => {
         (err, user, info, status) => {
           if (err || !user) {
             logger.error('Failed to authenticate user', err);
+            if (err && err.code === 11000) {
+              return res.redirect(
+                `${config.CLIENT_HOST}/login?error=email_taken&value=${err.keyValue.email}`
+              );
+            }
             return res.redirect(
-              `${config.CLIENT_HOST}/login?error=${err?.name}`
+              `${config.CLIENT_HOST}/login?error=authentication_failed`
             );
           }
 
