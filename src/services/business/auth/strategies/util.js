@@ -1,4 +1,4 @@
-const config = require('../../../shared/configs');
+const config = require('../../../../shared/configs');
 const crypto = require('crypto');
 
 function encryptToken(token) {

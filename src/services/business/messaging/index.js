@@ -42,12 +42,15 @@ async function handleInferenceResponse(content, msg) {
     if (content.done) {
       // logger.info('Received inference response:', content);
       inMemoryValue[content._id] += content.result.message.content;
-      console.log('emitting inference stream chunk end\t', { content, inMemoryValue });
+      // console.log('emitting inference stream chunk end\t', { content, inMemoryValue });
 
-      await updateById(content._id, { response: inMemoryValue[content._id], status: 'completed' });
+      // To calculate how fast the response is generated in tokens per second (token/s), divide eval_count / eval_duration * 10^9.
+      const tokensPerSecond = content.result.eval_count / content.result.eval_duration * 1e9;
+      console.log('Speed:', tokensPerSecond);
+      await updateById(content._id, { response: inMemoryValue[content._id], status: 'completed', result: content.result, tokensPerSecond });
 
       // clear in-memory value
-      inMemoryValue[content._id] = '';
+      inMemoryValue[content._id] = undefined;
       eventEmitter.emit(
         eventEmitter.EVENT_TYPES.INFERENCE_STREAM_CHUNK_END,
         content
@@ -71,7 +74,7 @@ async function handleInferenceResponse(content, msg) {
 
 async function sendInferenceRequest(request) {
   try {
-    logger.info('Publishing inference request to queue:', request);
+    logger.info('Publishing inference request to queue:', { _id: request._id.toString() });
     await client.publishMessage(INFERENCE_QUEUE, request);
     logger.info('Sent inference request successfully');
   } catch (error) {

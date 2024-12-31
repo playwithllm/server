@@ -9,6 +9,7 @@ class ApplicationEvents {
             INFERENCE_REQUEST: 'INFERENCE_REQUEST',
             INFERENCE_STREAM_CHUNK: 'INFERENCE_STREAM_CHUNK',
             INFERENCE_STREAM_CHUNK_END: 'INFERENCE_STREAM_CHUNK_END',
+            DISABLE_CHAT: 'DISABLE_CHAT',
         };
 
         // Bind methods to this instance

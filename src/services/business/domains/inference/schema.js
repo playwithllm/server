@@ -12,6 +12,7 @@ const InferenceSchema = new mongoose.Schema(
       default: 'pending',
     },
     result: { type: Object, default: null, blackbox: true },
+    tokensPerSecond: { type: Number },
     error: { type: String, default: null },
 
     sessionId: { type: String },
@@ -32,6 +33,9 @@ const InferenceSchema = new mongoose.Schema(
     cost: { type: Number },
     errorType: { type: String },
     errorMessage: { type: String },
+
+    inferenceType: { type: String },
+    inferenceFrom: { type: String },
   },
   { timestamps: true }
 );

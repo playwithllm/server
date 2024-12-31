@@ -4,6 +4,7 @@ const domainRoutes = require('./domains/index');
 const packageJson = require('../../../package.json');
 
 const auth = require('../../shared/middlewares/auth/authentication');
+const { configureAuthToExpressApp: authRoutes } = require('./auth/api');
 
 function formatUptime(uptime) {
   const days = Math.floor(uptime / (24 * 60 * 60));
@@ -16,8 +17,9 @@ function formatUptime(uptime) {
 
 function defineRoutes(expressApp) {
   logger.info('Defining routes...');
-  const router = express.Router();
+  authRoutes(expressApp);
 
+  const router = express.Router();
   domainRoutes(router);
 
   // we need to call `auth.isAuthenticated` like this so that we can mock the auth module in tests

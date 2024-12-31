@@ -32,6 +32,21 @@ const getAllByWebsocketId = async (websocketId) => {
   }
 };
 
+const getAllChatByUserId = async (userId) => {
+  try {
+    const items = await Model.find({
+      userId,
+      isChatMessage: true,
+    });
+    logger.info(`getAllChatByUserId(): ${model} fetched`, { userId });
+    return items;
+  } catch (error) {
+    logger.error(`getAllChatByUserId(): Failed to get ${model}`, error);
+    throw new AppError(`Failed to get ${model}`, error.message);
+  }
+};
+
+
 
 const search = async (query) => {
   try {
