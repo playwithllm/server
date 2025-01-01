@@ -129,11 +129,7 @@ const schema = new mongoose.Schema({
     type: String,
     required: true,
     default: 'Visitor',
-  },
-  roleId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Role',
-  },
+  }
 });
 
 schema.add(baseSchema);

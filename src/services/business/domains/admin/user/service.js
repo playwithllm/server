@@ -251,11 +251,11 @@ const canResendVerification = async (userId) => {
   if (user.verificationEmailSentAt) {
     const timeSinceLastEmail = new Date() - user.verificationEmailSentAt;
     const oneMinuteInMs = 60000; // 1 minute in milliseconds
-    
+
     if (timeSinceLastEmail < oneMinuteInMs) {
       const remainingSeconds = Math.ceil((oneMinuteInMs - timeSinceLastEmail) / 1000);
       throw new AppError(
-        'rate-limit', 
+        'rate-limit',
         `Please wait ${remainingSeconds} seconds before requesting another verification email`,
         429
       );
@@ -268,7 +268,7 @@ const canResendVerification = async (userId) => {
 const refreshVerificationToken = async (email) => {
   try {
     const user = await Model.findOne({ email, authType: 'local' });
-    
+
     if (!user) {
       throw new AppError('user-not-found', 'No account found with this email', 404);
     }
@@ -300,11 +300,6 @@ const refreshVerificationToken = async (email) => {
 
 const completeEmailVerification = async (userId) => {
   try {
-    const defaultRole = await Role.findOne({ name: 'Visitor' });
-    if (!defaultRole) {
-      throw new AppError('role-not-found', 'Default user role not found', 500);
-    }
-
     const updateData = {
       $unset: {
         verificationToken: 1,
@@ -315,7 +310,6 @@ const completeEmailVerification = async (userId) => {
         isVerified: true,
         verifiedAt: new Date(),
         role: 'Visitor',
-        roleId: defaultRole._id,
         updatedAt: new Date(),
         isDeactivated: false
       }

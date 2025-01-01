@@ -57,9 +57,9 @@ async function handleInferenceResponse(content, msg) {
       const totalCost = inputCost + outputCost;
 
       // durations in seconds (total_duration, eval_duration, prompt_eval_duration)
-      const prompt_eval_duration_in_seconds = content.result.prompt_eval_duration / 1e9;
-      const eval_duration_in_seconds = content.result.eval_duration / 1e9;
-      const total_duration_in_seconds = content.result.total_duration / 1e9;
+      const prompt_eval_duration_in_seconds = content.result?.prompt_eval_duration ? content.result?.prompt_eval_duration / 1e9 : 0;
+      const eval_duration_in_seconds = content.result?.eval_duration ? content.result?.eval_duration / 1e9 : 0;
+      const total_duration_in_seconds = content.result?.total_duration ? content.result?.total_duration / 1e9: 0;
 
       const updatedResult = {
         ...content.result,
@@ -74,34 +74,34 @@ async function handleInferenceResponse(content, msg) {
 
 
       await updateById(content._id, { response: inMemoryValue[content._id], status: 'completed', result: updatedResult });
-      
-      const updatedContent = await getById(content._id);      
+
+      const updatedContent = await getById(content._id);
 
       const inferenceItems = await getAllByApiKeyId(updatedContent.apiKeyId);
       const totalRequests = inferenceItems.length;
-      const totalPromptEvalCount = inferenceItems.reduce((acc, item) => acc + item.result.prompt_eval_count, 0);
-      const totalEvalCount = inferenceItems.reduce((acc, item) => acc + item.result.eval_count, 0);
+      const totalPromptEvalCount = inferenceItems.reduce((acc, item) => acc + item.result?.prompt_eval_count ? 0 : 0, 0);
+      const totalEvalCount = inferenceItems.reduce((acc, item) => acc + item.result?.eval_count ? 0 : 0, 0);
       const totalCount = totalPromptEvalCount + totalEvalCount;
-      const totalPromptEvalCost = inferenceItems.reduce((acc, item) => acc + item.result.prompt_eval_cost, 0);
-      const totalEvalCost = inferenceItems.reduce((acc, item) => acc + item.result.eval_cost, 0);
-      const totalCosts = inferenceItems.reduce((acc, item) => acc + item.result.total_cost, 0);
-      const totalDurations = inferenceItems.reduce((acc, item) => acc + item.result.total_duration_in_seconds, 0);
+      const totalPromptEvalCost = inferenceItems.reduce((acc, item) => acc + item.result?.prompt_eval_cost ? 0 : 0, 0);
+      const totalEvalCost = inferenceItems.reduce((acc, item) => acc + item.result?.eval_cost ? 0 : 0, 0);
+      const totalCosts = inferenceItems.reduce((acc, item) => acc + item.result?.total_cost ? 0 : 0, 0);
+      const totalDurations = inferenceItems.reduce((acc, item) => acc + (item.result?.total_duration_in_seconds ? 0 : 0), 0);
 
       console.log('Total Requests:', inferenceItems.length);
-      
 
-      await updateApiKeyUsage(updatedContent.apiKeyId, {
-        usage: {
-          requests: totalRequests,
-          prompt_eval_count: totalPromptEvalCount,
-          eval_count: totalEvalCount,
-          total_count: totalCount,
-          prompt_eval_cost: totalPromptEvalCost,
-          eval_cost: totalEvalCost,
-          total_cost: totalCosts,
-          total_duration: totalDurations
-        }
-      });
+
+      // await updateApiKeyUsage(updatedContent.apiKeyId, {
+      //   usage: {
+      //     requests: totalRequests,
+      //     prompt_eval_count: totalPromptEvalCount,
+      //     eval_count: totalEvalCount,
+      //     total_count: totalCount,
+      //     prompt_eval_cost: totalPromptEvalCost,
+      //     eval_cost: totalEvalCost,
+      //     total_cost: totalCosts,
+      //     total_duration: totalDurations
+      //   }
+      // });
 
       // clear in-memory value
       inMemoryValue[content._id] = undefined;
