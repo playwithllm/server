@@ -11,6 +11,7 @@ const {
   updateById,
   deleteById,
   getGroupedEvaluationCounts,
+  getDashboardData,
 } = require('./service');
 
 const {
@@ -108,6 +109,16 @@ const routes = () => {
       const user = req.user;
       const evaluationData = await getGroupedEvaluationCounts(user._id);
       res.json(evaluationData);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.get('/dashboard-data', async (req, res, next) => {
+    try {
+      const user = req.user;
+      const dashboardData = await getDashboardData(user._id);
+      res.json(dashboardData);
     } catch (error) {
       next(error);
     }

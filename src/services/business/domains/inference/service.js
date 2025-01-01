@@ -1,6 +1,7 @@
 const logger = require('../../../../shared/libraries/log/logger');
 const Model = require('./schema');
 const { AppError } = require('../../../../shared/libraries/error-handling/AppError');
+const { getAll: getApiKeysByUserId } = require('../apiKeys/service')
 
 const model = 'inference';
 
@@ -217,6 +218,58 @@ async function getGroupedEvaluationCounts(userId) {
   }
 }
 
+const getDashboardData = async (userId) => {
+  try {
+    // Get today's date at start (00:00:00) and end (23:59:59)
+    const today = new Date();
+    const startOfDay = new Date(today.setHours(0, 0, 0, 0));
+    const endOfDay = new Date(today.setHours(23, 59, 59, 999));
+
+    const dashboardStats = await Model.aggregate([
+      {
+        $match: {
+          userId: userId,
+          inputTime: {
+            $gte: startOfDay,
+            $lte: endOfDay
+          }
+        }
+      },
+      {
+        $group: {
+          _id: null,
+          totalRequests: { $sum: 1 },
+          totalTokens: {
+            $sum: { $add: ['$result.prompt_eval_count', '$result.eval_count'] }
+          },
+          totalCost: { $sum: '$result.total_cost' }
+        }
+      },
+      {
+        $project: {
+          _id: 0,
+          requestCount: '$totalRequests',
+          tokenCount: '$totalTokens',
+          costAmount: { $round: ['$totalCost', 4] }
+        }
+      }
+    ]);
+
+    const apiKeys = await getApiKeysByUserId(userId);
+    const activeKeys = apiKeys.filter((key) => key.status === 'active');
+
+    const response = {
+      ...dashboardStats[0],
+      activeKeys: activeKeys.length
+    };
+
+    return response;
+  } catch (error) {
+    logger.error('getDashboardData(): Failed to get dashboard data', error);
+    throw new AppError('Failed to get dashboard data', error.message);
+  }
+};
+
 module.exports = {
   create,
   search,
@@ -226,5 +279,6 @@ module.exports = {
   deleteById,
   getAllByWebsocketId,
   getGroupedEvaluationCounts,
-  getAllByApiKeyId
+  getAllByApiKeyId,
+  getDashboardData
 };

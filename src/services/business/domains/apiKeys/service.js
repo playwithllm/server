@@ -15,7 +15,7 @@ const create = async (data) => {
     const keyHash = await bcrypt.hash(apiKey, SALT_ROUNDS);
     const payload = new ApiKey({
       name: data.name ?? "Default",
-      keyPrefix: apiKey.slice(0, 5),
+      keyPrefix: apiKey.slice(0, 8),
       hashedKey: keyHash,
       salt: SALT_ROUNDS,
       userId: data.userId,
@@ -88,6 +88,21 @@ const revokeById = async (id) => {
   }
 };
 
+const isValidKey = async (apiKey) => {
+  const keyPrefix = apiKey.slice(0, 8);
+  const item = await ApiKey.findOne({
+    keyPrefix,
+    status: 'active',
+  });
+
+  if (!item) {
+    return false;
+  }
+
+  const result = await bcrypt.compare(apiKey, item.hashedKey);
+  return result ? item : false;
+};
+
 module.exports = {
   create,
   getAll,
@@ -95,4 +110,5 @@ module.exports = {
   updateById,
   deleteById,
   revokeById,
+  isValidKey,
 };
