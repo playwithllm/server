@@ -1,6 +1,7 @@
 const logger = require('../../../../shared/libraries/log/logger');
 const Model = require('./schema');
 const { AppError } = require('../../../../shared/libraries/error-handling/AppError');
+const { getAll: getApiKeysByUserId } = require('../apiKeys/service')
 
 const model = 'inference';
 
@@ -14,7 +15,7 @@ const create = async (data) => {
     logger.info(`create(): ${model} created [Dummy]`, {
       data,
     });
-    return item;
+    return saved;
   } catch (error) {
     logger.error(`create(): Failed to create ${model}`, error);
     throw new AppError(`Failed to create ${model}`, error.message);
@@ -32,35 +33,26 @@ const getAllByWebsocketId = async (websocketId) => {
   }
 };
 
-const getAllChatByUserId = async (userId) => {
-  try {
-    const items = await Model.find({
-      userId,
-      isChatMessage: true,
-    });
-    logger.info(`getAllChatByUserId(): ${model} fetched`, { userId });
-    return items;
-  } catch (error) {
-    logger.error(`getAllChatByUserId(): Failed to get ${model}`, error);
-    throw new AppError(`Failed to get ${model}`, error.message);
-  }
-};
-
-
-
 const search = async (query) => {
   try {
     logger.info(`search(): ${model} search`, { query });
+
+    if (!query.userId) {
+      throw new AppError('User ID is required', 'User ID is required', 400);
+    }
+
     const pageSize = 10;
     const {
       keyword,
       page = 0,
-      orderBy = 'name',
-      order = 'asc',
+      orderBy = 'createdAt',
+      order = 'desc',
       type
     } = query ?? {};
 
-    const filter = {};
+    const filter = {
+      userId: query.userId
+    };
     if (keyword) {
       filter.$or = [
         { name: { $regex: keyword, $options: 'i' } },
@@ -88,7 +80,12 @@ const search = async (query) => {
 
 const count = async (query) => {
   try {
-    const { keyword, type } = query ?? {};
+    const { keyword, type, userId } = query ?? {};
+
+    if (!userId) {
+      throw new AppError('User ID is required', 'User ID is required', 400);
+    }
+
     const filter = {};
     if (keyword) {
       filter.$or = [
@@ -134,22 +131,6 @@ const updateById = async (id, data) => {
   }
 };
 
-const updateFields = async (id, data) => {
-  try {
-    const item = await Model.findById(id);
-    Object.keys(data).forEach((key) => {
-      item[key] = data[key];
-    });
-    const saved = await item.save();
-    logger.info(`updateFields(): ${model} updated`, { id });
-    return saved;
-  }
-  catch (error) {
-    logger.error(`updateFields(): Failed to update ${model}`, error);
-    throw new AppError(`Failed to update ${model}`, error.message);
-  }
-};
-
 const deleteById = async (id) => {
   try {
     await Model.findByIdAndDelete(id);
@@ -161,13 +142,143 @@ const deleteById = async (id) => {
   }
 };
 
+const getAllByApiKeyId = async (apiKeyId) => {
+  try {
+    const items = await Model.find({ apiKeyId });
+    logger.info(`getAllByApiKeyId(): ${model} fetched`, { apiKeyId });
+    return items;
+  } catch (error) {
+    logger.error(`getAllByApiKeyId(): Failed to get ${model}`, error);
+    throw new AppError(`Failed to get ${model}`, error.message);
+  }
+};
+
+async function getGroupedEvaluationCounts(userId) {
+  try {
+    console.log('getGroupedEvaluationCounts(): userId', userId);
+    const evaluationData = await Model.aggregate([
+      {
+        $match: {
+          userId: userId
+        }
+      },
+      {
+        $addFields: {
+          formattedDate: {
+            $dateToString: {
+              format: '%Y-%m-%d',
+              date: '$inputTime'
+            }
+          }
+        }
+      },
+      {
+        $group: {
+          _id: '$formattedDate',
+          totalPromptEvalCount: {
+            $sum: '$result.prompt_eval_count'
+          },
+          totalEvalCount: {
+            $sum: '$result.eval_count'
+          },
+          totalPromptEvalCost: {
+            $sum: '$result.prompt_eval_cost'
+          },
+          totalEvalCost: {
+            $sum: '$result.eval_cost'
+          },
+          totalCosts: {
+            $sum: '$result.total_cost'
+          },
+          totalDurationsInSeconds: {
+            $sum: '$result.total_duration_in_seconds'
+          }
+        }
+      },
+      { $sort: { _id: 1 } },
+      {
+        $project: {
+          _id: 0,
+          date: '$_id',
+          promptEvalCount: '$totalPromptEvalCount',
+          evalCount: '$totalEvalCount',
+          promptEvalCost: '$totalPromptEvalCost',
+          evalCost: '$totalEvalCost',
+          totalCost: '$totalCosts',
+          totalDurationInSeconds: '$totalDurationsInSeconds'
+        }
+      }
+    ]);
+
+    console.log(evaluationData);
+    return evaluationData;
+  } catch (error) {
+    console.error("Error aggregating evaluation counts:", error);
+    throw error;
+  }
+}
+
+const getDashboardData = async (userId) => {
+  try {
+    // Get today's date at start (00:00:00) and end (23:59:59)
+    const today = new Date();
+    const startOfDay = new Date(today.setHours(0, 0, 0, 0));
+    const endOfDay = new Date(today.setHours(23, 59, 59, 999));
+
+    const dashboardStats = await Model.aggregate([
+      {
+        $match: {
+          userId: userId,
+          inputTime: {
+            $gte: startOfDay,
+            $lte: endOfDay
+          }
+        }
+      },
+      {
+        $group: {
+          _id: null,
+          totalRequests: { $sum: 1 },
+          totalTokens: {
+            $sum: { $add: ['$result.prompt_eval_count', '$result.eval_count'] }
+          },
+          totalCost: { $sum: '$result.total_cost' }
+        }
+      },
+      {
+        $project: {
+          _id: 0,
+          requestCount: '$totalRequests',
+          tokenCount: '$totalTokens',
+          costAmount: { $round: ['$totalCost', 4] }
+        }
+      }
+    ]);
+
+    const apiKeys = await getApiKeysByUserId(userId);
+    const activeKeys = apiKeys.filter((key) => key.status === 'active');
+
+    const response = {
+      ...dashboardStats[0],
+      activeKeys: activeKeys.length
+    };
+
+    return response;
+  } catch (error) {
+    logger.error('getDashboardData(): Failed to get dashboard data', error);
+    throw new AppError('Failed to get dashboard data', error.message);
+  }
+};
+
 module.exports = {
   create,
   search,
   count,
   getById,
   updateById,
-  updateFields,
   deleteById,
   getAllByWebsocketId,
+  getGroupedEvaluationCounts,
+  getAllByApiKeyId,
+  getDashboardData
 };

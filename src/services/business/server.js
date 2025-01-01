@@ -18,10 +18,12 @@ const {
   addRequestIdMiddleware,
 } = require('../../shared/middlewares/request-context');
 const { connectWithMongoDb } = require('../../shared/libraries/db');
+const { AppError } = require('../../shared/libraries/error-handling/AppError');
 
 const businessMessaging = require('./messaging');
 
-const { create, getAllByWebsocketId } = require('./domains/inference/service');
+const { getAll: getAllApiKeysByUserId } = require('../business/domains/apiKeys/service')
+const { create, getAllByWebsocketId, getDashboardData } = require('./domains/inference/service');
 
 let connection;
 let io;
@@ -62,6 +64,16 @@ const setupWebSocket = (server) => {
     },
   });
 
+  // INFERENCE_STREAM_CHUNK
+  eventEmitter.on(eventEmitter.EVENT_TYPES.INFERENCE_STREAM_CHUNK, (data) => {
+    const { connectionId, ...rest } = data;
+
+    // console.log('INFERENCE_STREAM_CHUNK connectionId', connectionId);
+    // Broadcast the inference response to the client that requested it
+    // io.emit('inferenceResponseChunk', data);
+    io.to(connectionId).emit('inferenceResponseChunk', rest);
+  });
+
   // INFERENCE_STREAM_CHUNK_END
   eventEmitter.on(
     eventEmitter.EVENT_TYPES.INFERENCE_STREAM_CHUNK_END,
@@ -72,16 +84,6 @@ const setupWebSocket = (server) => {
       logger.info('Broadcasted INFERENCE_STREAM_CHUNK_END to all clients');
     }
   );
-
-  // INFERENCE_STREAM_CHUNK
-  eventEmitter.on(eventEmitter.EVENT_TYPES.INFERENCE_STREAM_CHUNK, (data) => {
-    const { connectionId, ...rest } = data;
-
-    // console.log('INFERENCE_STREAM_CHUNK connectionId', connectionId);
-    // Broadcast the inference response to the client that requested it
-    // io.emit('inferenceResponseChunk', data);
-    io.to(connectionId).emit('inferenceResponseChunk', rest);
-  });
 
   // DISABLE_CHAT
   eventEmitter.on(eventEmitter.EVENT_TYPES.DISABLE_CHAT, (data) => {
@@ -123,7 +125,7 @@ const setupWebSocket = (server) => {
     const clientIp = socket.handshake.headers['cf-connecting-ip'] || socket.handshake.address;
 
     // log the user from socket.user
-    console.log('socket.user', socket.user);
+    console.log('socket.user._id', socket.user._id);
 
 
     logger.info(`Client connected: ${socket.id}, IP: ${clientIp}`);
@@ -143,16 +145,29 @@ const setupWebSocket = (server) => {
     socket.on('inferenceRequest', async (data) => {
       const user = socket.user;
       console.log('Authenticated user:', user);
-      // logger.info(`Received message from ${socket.id}:`, data);
       console.log('Received message from:', socket.id, data);
+
+      const keys = await getAllApiKeysByUserId(user._id);
+      const activeKeys = keys.filter((key) => key.status === 'active');
+      if (!activeKeys || activeKeys.length === 0) {
+        // throw new AppError('No active API keys found', 'No API keys found', 404);
+        eventEmitter.emit(
+          eventEmitter.EVENT_TYPES.DISABLE_CHAT,
+          { connectionId: socket.id, message: 'No active API keys found. Please create an API key first.' }
+        );
+      }
+
+      const key = activeKeys[0];
+      // console.log('key', key);
+
       // save to database
-      const savedItem = await create({ prompt: data.message, websocketId: socket.id, modelName: 'llama3.2-1B', inputTime: new Date(), userId: user._id, clientIp });
+      const savedItem = await create({ prompt: data.message, websocketId: socket.id, modelName: 'llama3.2-1B', inputTime: new Date(), userId: user._id, clientIp, apiKeyId: key._id.toString() });
       // Handle the message
-      console.log('saved item', { savedItem });
+      // console.log('saved item', { savedItem });
 
       const previousInferences = await getAllByWebsocketId(socket.id);
 
-      console.log('previousInferences', previousInferences);
+      // console.log('previousInferences', previousInferences);
       // sum of item.result.prompt_eval_count
       const totalInputTokens = previousInferences.filter((item) => item.result?.prompt_eval_count).reduce((acc, item) => {
         return acc + item.result.prompt_eval_count;
@@ -165,12 +180,26 @@ const setupWebSocket = (server) => {
       const totalTokensInThisDiscussion = totalInputTokens + totalOutputTokens;
       console.log('totalTokensInThisDiscussion', totalTokensInThisDiscussion);
 
-      if(totalTokensInThisDiscussion > 1000) {
+      if (totalTokensInThisDiscussion > 1000) {
         // disable chat
         eventEmitter.emit(
           eventEmitter.EVENT_TYPES.DISABLE_CHAT,
-          { connectionId: socket.id, message: 'You have exceeded the token limit for this session. Please try again later.' }
+          { connectionId: socket.id, message: 'You have exceeded the token limit (1000) for this session. Please try again later (logging out or refreshing helps sometimes)!' }
         );
+
+        return;
+      }
+
+      const { tokenCount } = await getDashboardData(user._id);
+
+      if (tokenCount > 10000) {
+        // disable chat
+        eventEmitter.emit(
+          eventEmitter.EVENT_TYPES.DISABLE_CHAT,
+          { connectionId: socket.id, message: 'You have exceeded the free token limit (10000) for today. Please try again tomorrow.' }
+        );
+
+        return;
       }
 
       const chatMessagesForLLM = [];
