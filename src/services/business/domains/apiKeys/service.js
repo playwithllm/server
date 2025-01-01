@@ -33,10 +33,10 @@ const create = async (data) => {
   }
 };
 
-const getAll = async () => {
+const getAll = async (userId) => {
   try {
-    const items = await ApiKey.find();
-    logger.info(`getAll(): ${model} fetched`, { count: items.length });
+    const items = await ApiKey.find({ userId });
+    logger.info(`getAll(): ${model} fetched for ${userId}`, { count: items.length });
     return items;
   } catch (error) {
     logger.error(`getAll(): Failed to get ${model}`, error);

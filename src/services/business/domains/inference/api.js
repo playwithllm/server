@@ -10,6 +10,7 @@ const {
   getById,
   updateById,
   deleteById,
+  getGroupedEvaluationCounts,
 } = require('./service');
 
 const {
@@ -21,6 +22,7 @@ const {
 const { validateRequest } = require('../../../../shared/middlewares/request-validate');
 const { logRequest } = require('../../../../shared/middlewares/log');
 const { isAuthorized } = require('../../../../shared/middlewares/auth/authorization');
+const { getAll: getAllApiKeysByUserId } = require('../apiKeys/service')
 const businessMessaging = require('../../messaging');
 
 const model = 'Inference';
@@ -40,7 +42,8 @@ const routes = () => {
           query: req.query,
           originalUrl: req.originalUrl,
         });
-        const items = await search(req.query);
+        const user = req.user;
+        const items = await search({ ...req.query, userId: user._id });
         res.json(items);
       } catch (error) {
         next(error);
@@ -62,23 +65,6 @@ const routes = () => {
     }
   );
 
-  router.get(
-    '/:id',
-    logRequest({}),
-    validateRequest({ schema: idSchema, isParam: true }),
-    async (req, res, next) => {
-      try {
-        const item = await getById(req.params.id);
-        if (!item) {
-          throw new AppError(`${model} not found`, `${model} not found`, 404);
-        }
-        res.status(200).json(item);
-      } catch (error) {
-        next(error);
-      }
-    }
-  );
-
   // create inference
   router.post(
     '/create',
@@ -88,18 +74,25 @@ const routes = () => {
       try {
         const prompt = req.body.prompt;
         const user = req.user;
-        const savedItem = (await create({ prompt, modelName: 'llama3.2-1B', inputTime: new Date(), userId: user._id,  })).toObject();
+
+        const keys = await getAllApiKeysByUserId(user._id);
+        const activeKeys = keys.filter((key) => key.status === 'active');
+        if (!activeKeys || activeKeys.length === 0) {
+          throw new AppError('No active API keys found', 'No API keys found. Please create an API key first.', 404);
+        }
+
+        const key = activeKeys[0];
+
+        const savedItem = (await create({ prompt, modelName: 'llama3.2-1B', inputTime: new Date(), userId: user._id, apiKeyId: key._id.toString() })).toObject();
         console.log('saved item', { savedItem });
         const chatMessagesForLLM = [];
         chatMessagesForLLM.push({ role: 'assistant', content: 'You are a helpful assistant.' });
         chatMessagesForLLM.push({ role: 'user', content: prompt });
         const eventEmitter = new EventEmitter();
         eventEmitter.on('inferenceStreamChunk', async (part) => {
-          // console.log('route handler: inferenceStreamChunk', { msg: part.result.message, connectionId: savedItem._id.toString() });
           res.write(part.result.message.content);
         });
         eventEmitter.on('inferenceStreamChunkEnd', async (part) => {
-          // console.log('route handler: inferenceStreamChunkEnd', { msg: part.result.message, connectionId: savedItem._id.toString() });
           res.end();
         });
 
@@ -109,6 +102,16 @@ const routes = () => {
       }
     }
   );
+
+  router.get('/grouped-evaluation-counts', async (req, res, next) => {
+    try {
+      const user = req.user;
+      const evaluationData = await getGroupedEvaluationCounts(user._id);
+      res.json(evaluationData);
+    } catch (error) {
+      next(error);
+    }
+  });
 
   return router;
 };

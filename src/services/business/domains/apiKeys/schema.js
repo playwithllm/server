@@ -10,8 +10,13 @@ const apiKeySchema = new mongoose.Schema({
   revokedAt: { type: Date },
   usage: {
     requests: { type: Number, default: 0 },
-    tokens: { type: Number, default: 0 },
-    cost: { type: Number, default: 0 },
+    prompt_eval_count: { type: Number, default: 0 },
+    eval_count: { type: Number, default: 0 },
+    total_count: { type: Number, default: 0 },
+    prompt_eval_cost: { type: Number, default: 0 },
+    eval_cost: { type: Number, default: 0 },
+    total_cost: { type: Number, default: 0 },
+    total_duration: { type: Number, default: 0 },
   },
 }, {
   timestamps: true,

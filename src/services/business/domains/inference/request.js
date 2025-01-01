@@ -9,5 +9,9 @@ const searchSchema = Joi.object().keys({
   keyword: Joi.string(),
 });
 
+const idSchema = Joi.object().keys({
+  id: Joi.string().required(),
+});
 
-module.exports = { createSchema, searchSchema };
+
+module.exports = { createSchema, searchSchema, idSchema };

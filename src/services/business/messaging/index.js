@@ -2,7 +2,8 @@ const RabbitMQClient = require('../../../shared/libraries/util/rabbitmq');
 const logger = require('../../../shared/libraries/log/logger');
 const eventEmitter = require('../../../shared/libraries/events/eventEmitter');
 
-const { updateById } = require('../../business/domains/inference/service');
+const { updateById, getAllByApiKeyId } = require('../../business/domains/inference/service');
+const { updateById: updateApiKeyUsage } = require('../../business/domains/apiKeys/service');
 
 const RABBITMQ_URL = 'amqp://localhost:5672';
 const INFERENCE_QUEUE = 'inference_queue';
@@ -49,7 +50,65 @@ async function handleInferenceResponse(content, msg) {
       // To calculate how fast the response is generated in tokens per second (token/s), divide eval_count / eval_duration * 10^9.
       const tokensPerSecond = content.result.eval_count / content.result.eval_duration * 1e9;
       console.log('Speed:', tokensPerSecond);
-      await updateById(content._id, { response: inMemoryValue[content._id], status: 'completed', result: content.result, tokensPerSecond });
+
+      // cost calculation: 1 BDT per 1M prompt tokens (prompt_eval_count), 2 BDT per 1M response tokens (eval_count)
+      const inputCost = content.result.prompt_eval_count / 1e6;
+      const outputCost = (content.result.eval_count / 1e6) * 2;
+      const totalCost = inputCost + outputCost;
+
+      // durations in seconds (total_duration, eval_duration, prompt_eval_duration)
+      const prompt_eval_duration_in_seconds = content.result.prompt_eval_duration / 1e9;
+      const eval_duration_in_seconds = content.result.eval_duration / 1e9;
+      const total_duration_in_seconds = content.result.total_duration / 1e9;
+
+      const updatedResult = {
+        ...content.result,
+        prompt_eval_cost: inputCost,
+        eval_cost: outputCost,
+        total_cost: totalCost,
+        eval_duration_in_seconds,
+        prompt_eval_duration_in_seconds,
+        total_duration_in_seconds,
+        tokens_per_second: tokensPerSecond
+      };
+
+
+      await updateById(content._id, { response: inMemoryValue[content._id], status: 'completed', result: updatedResult });
+
+      // update the api key usage totals for below fields
+      /**
+        requests: { type: Number, default: 0 },
+        prompt_eval_count: { type: Number, default: 0 },
+        eval_count: { type: Number, default: 0 },
+        total_count: { type: Number, default: 0 },
+        prompt_eval_cost: { type: Number, default: 0 },
+        eval_cost: { type: Number, default: 0 },
+        total_cost: { type: Number, default: 0 },
+        total_duration: { type: Number, default: 0 },
+       */
+
+      const inferenceItems = await getAllByApiKeyId(content.apiKeyId);
+      const totalRequests = inferenceItems.length;
+      const totalPromptEvalCount = inferenceItems.reduce((acc, item) => acc + item.result.prompt_eval_count, 0);
+      const totalEvalCount = inferenceItems.reduce((acc, item) => acc + item.result.eval_count, 0);
+      const totalCount = totalPromptEvalCount + totalEvalCount;
+      const totalPromptEvalCost = inferenceItems.reduce((acc, item) => acc + item.result.prompt_eval_cost, 0);
+      const totalEvalCost = inferenceItems.reduce((acc, item) => acc + item.result.eval_cost, 0);
+      const totalCosts = inferenceItems.reduce((acc, item) => acc + item.result.total_cost, 0);
+      const totalDurations = inferenceItems.reduce((acc, item) => acc + item.result.total_duration_in_seconds, 0);
+
+      await updateApiKeyUsage(content.apiKeyId, {
+        usage: {
+          requests: totalRequests,
+          prompt_eval_count: totalPromptEvalCount,
+          eval_count: totalEvalCount,
+          total_count: totalCount,
+          prompt_eval_cost: totalPromptEvalCost,
+          eval_cost: totalEvalCost,
+          total_cost: totalCosts,
+          total_duration: totalDurations
+        }
+      });
 
       // clear in-memory value
       inMemoryValue[content._id] = undefined;

@@ -4,35 +4,46 @@ const mongoose = require('mongoose');
 const InferenceSchema = new mongoose.Schema(
   {
     userId: { type: String, required: true },
+    apiKeyId: { type: String, required: true },
     prompt: { type: String, required: true },
+    websocketId: { type: String, required: true },
     response: { type: String },
     status: {
       type: String,
       enum: ['pending', 'processing', 'completed', 'failed'],
       default: 'pending',
     },
-    result: { type: Object, default: null, blackbox: true },
-    tokensPerSecond: { type: Number },
+    result: {
+      type: {
+        model: String,
+        created_at: String,
+        message: {
+          role: String,
+          content: String
+        },
+        done_reason: String,
+        done: Boolean,
+        total_duration: Number,
+        load_duration: Number,
+        prompt_eval_count: Number,
+        prompt_eval_duration: Number,
+        eval_count: Number,
+        eval_duration: Number,
+        prompt_eval_cost: Number,
+        eval_cost: Number,
+        total_cost: Number,
+        eval_duration_in_seconds: Number,
+        prompt_eval_duration_in_seconds: Number,
+        total_duration_in_seconds: Number,
+        tokens_per_second: Number
+      },
+      default: null
+    },
     error: { type: String, default: null },
-
-    sessionId: { type: String },
-    websocketId: { type: String },
-    clientIp: { type: String },
     modelName: { type: String, required: true },
-    modelVersion: { type: String },
-    promptTokenCount: { type: Number },
     inputTime: { type: Date, default: Date.now },
-    inputSource: { type: String },
     isChatMessage: { type: Boolean, default: false },
-    sentiment: { type: String },
-    completedTimestamp: { type: Date },
-    isCompleted: { type: Boolean, default: false },
-    timeTaken: { type: Number },  // in milliseconds
-    totalTokens: { type: Number },
-    totalOutputLength: { type: Number },
-    cost: { type: Number },
-    errorType: { type: String },
-    errorMessage: { type: String },
+    isCompleted: { type: Boolean, default: false }
   },
   { timestamps: true }
 );

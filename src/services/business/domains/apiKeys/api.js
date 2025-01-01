@@ -33,7 +33,8 @@ const routes = () => {
     validateRequest({ schema: searchSchema, isQuery: true }),
     async (req, res, next) => {
       try {
-        const items = await getAll(req.query);
+        const user = req.user;
+        const items = await getAll(user._id);
         res.json(items);
       } catch (error) {
         next(error);

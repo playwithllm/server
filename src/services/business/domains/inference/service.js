@@ -35,6 +35,11 @@ const getAllByWebsocketId = async (websocketId) => {
 const search = async (query) => {
   try {
     logger.info(`search(): ${model} search`, { query });
+
+    if (!query.userId) {
+      throw new AppError('User ID is required', 'User ID is required', 400);
+    }
+
     const pageSize = 10;
     const {
       keyword,
@@ -44,7 +49,9 @@ const search = async (query) => {
       type
     } = query ?? {};
 
-    const filter = {};
+    const filter = {
+      userId: query.userId
+    };
     if (keyword) {
       filter.$or = [
         { name: { $regex: keyword, $options: 'i' } },
@@ -72,7 +79,12 @@ const search = async (query) => {
 
 const count = async (query) => {
   try {
-    const { keyword, type } = query ?? {};
+    const { keyword, type, userId } = query ?? {};
+
+    if (!userId) {
+      throw new AppError('User ID is required', 'User ID is required', 400);
+    }
+
     const filter = {};
     if (keyword) {
       filter.$or = [
@@ -129,12 +141,90 @@ const deleteById = async (id) => {
   }
 };
 
+const getAllByApiKeyId = async (apiKeyId) => {
+  try {
+    const items = await Model.find({ apiKeyId });
+    logger.info(`getAllByApiKeyId(): ${model} fetched`, { apiKeyId });
+    return items;
+  } catch (error) {
+    logger.error(`getAllByApiKeyId(): Failed to get ${model}`, error);
+    throw new AppError(`Failed to get ${model}`, error.message);
+  }
+};
+
+async function getGroupedEvaluationCounts(userId) {
+  try {
+    console.log('getGroupedEvaluationCounts(): userId', userId);
+    const evaluationData = await Model.aggregate([
+      {
+        $match: {
+          userId: userId
+        }
+      },
+      {
+        $addFields: {
+          formattedDate: {
+            $dateToString: {
+              format: '%Y-%m-%d',
+              date: '$inputTime'
+            }
+          }
+        }
+      },
+      {
+        $group: {
+          _id: '$formattedDate',
+          totalPromptEvalCount: {
+            $sum: '$result.prompt_eval_count'
+          },
+          totalEvalCount: {
+            $sum: '$result.eval_count'
+          },
+          totalPromptEvalCost: {
+            $sum: '$result.prompt_eval_cost'
+          },
+          totalEvalCost: {
+            $sum: '$result.eval_cost'
+          },
+          totalCosts: {
+            $sum: '$result.total_cost'
+          },
+          totalDurationsInSeconds: {
+            $sum: '$result.total_duration_in_seconds'
+          }
+        }
+      },
+      { $sort: { _id: 1 } },
+      {
+        $project: {
+          _id: 0,
+          date: '$_id',
+          promptEvalCount: '$totalPromptEvalCount',
+          evalCount: '$totalEvalCount',
+          promptEvalCost: '$totalPromptEvalCost',
+          evalCost: '$totalEvalCost',
+          totalCost: '$totalCosts',
+          totalDurationInSeconds: '$totalDurationsInSeconds'
+        }
+      }
+    ]);
+
+    console.log(evaluationData);
+    return evaluationData;
+  } catch (error) {
+    console.error("Error aggregating evaluation counts:", error);
+    throw error;
+  }
+}
+
 module.exports = {
   create,
   search,
   count,
-  getById,
+  // getById,
   updateById,
   deleteById,
   getAllByWebsocketId,
+  getGroupedEvaluationCounts,
+  getAllByApiKeyId
 };
