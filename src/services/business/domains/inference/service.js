@@ -274,7 +274,7 @@ module.exports = {
   create,
   search,
   count,
-  // getById,
+  getById,
   updateById,
   deleteById,
   getAllByWebsocketId,

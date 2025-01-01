@@ -23,7 +23,7 @@ const { AppError } = require('../../shared/libraries/error-handling/AppError');
 const businessMessaging = require('./messaging');
 
 const { getAll: getAllApiKeysByUserId } = require('../business/domains/apiKeys/service')
-const { create, getAllByWebsocketId } = require('./domains/inference/service');
+const { create, getAllByWebsocketId, getDashboardData } = require('./domains/inference/service');
 
 let connection;
 let io;
@@ -125,7 +125,7 @@ const setupWebSocket = (server) => {
     const clientIp = socket.handshake.headers['cf-connecting-ip'] || socket.handshake.address;
 
     // log the user from socket.user
-    console.log('socket.user', socket.user);
+    console.log('socket.user._id', socket.user._id);
 
 
     logger.info(`Client connected: ${socket.id}, IP: ${clientIp}`);
@@ -158,16 +158,16 @@ const setupWebSocket = (server) => {
       }
 
       const key = activeKeys[0];
-      console.log('key', key);
+      // console.log('key', key);
 
       // save to database
       const savedItem = await create({ prompt: data.message, websocketId: socket.id, modelName: 'llama3.2-1B', inputTime: new Date(), userId: user._id, clientIp, apiKeyId: key._id.toString() });
       // Handle the message
-      console.log('saved item', { savedItem });
+      // console.log('saved item', { savedItem });
 
       const previousInferences = await getAllByWebsocketId(socket.id);
 
-      console.log('previousInferences', previousInferences);
+      // console.log('previousInferences', previousInferences);
       // sum of item.result.prompt_eval_count
       const totalInputTokens = previousInferences.filter((item) => item.result?.prompt_eval_count).reduce((acc, item) => {
         return acc + item.result.prompt_eval_count;
@@ -184,8 +184,22 @@ const setupWebSocket = (server) => {
         // disable chat
         eventEmitter.emit(
           eventEmitter.EVENT_TYPES.DISABLE_CHAT,
-          { connectionId: socket.id, message: 'You have exceeded the token limit for this session. Please try again later.' }
+          { connectionId: socket.id, message: 'You have exceeded the token limit (1000) for this session. Please try again later (logging out or refreshing helps sometimes)!' }
         );
+
+        return;
+      }
+
+      const { tokenCount } = await getDashboardData(user._id);
+
+      if (tokenCount > 10000) {
+        // disable chat
+        eventEmitter.emit(
+          eventEmitter.EVENT_TYPES.DISABLE_CHAT,
+          { connectionId: socket.id, message: 'You have exceeded the free token limit (10000) for today. Please try again tomorrow.' }
+        );
+
+        return;
       }
 
       const chatMessagesForLLM = [];

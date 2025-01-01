@@ -2,7 +2,7 @@ const RabbitMQClient = require('../../../shared/libraries/util/rabbitmq');
 const logger = require('../../../shared/libraries/log/logger');
 const eventEmitter = require('../../../shared/libraries/events/eventEmitter');
 
-const { updateById, getAllByApiKeyId } = require('../../business/domains/inference/service');
+const { updateById, getAllByApiKeyId, getById } = require('../../business/domains/inference/service');
 const { updateById: updateApiKeyUsage } = require('../../business/domains/apiKeys/service');
 
 const RABBITMQ_URL = 'amqp://localhost:5672';
@@ -74,20 +74,10 @@ async function handleInferenceResponse(content, msg) {
 
 
       await updateById(content._id, { response: inMemoryValue[content._id], status: 'completed', result: updatedResult });
+      
+      const updatedContent = await getById(content._id);      
 
-      // update the api key usage totals for below fields
-      /**
-        requests: { type: Number, default: 0 },
-        prompt_eval_count: { type: Number, default: 0 },
-        eval_count: { type: Number, default: 0 },
-        total_count: { type: Number, default: 0 },
-        prompt_eval_cost: { type: Number, default: 0 },
-        eval_cost: { type: Number, default: 0 },
-        total_cost: { type: Number, default: 0 },
-        total_duration: { type: Number, default: 0 },
-       */
-
-      const inferenceItems = await getAllByApiKeyId(content.apiKeyId);
+      const inferenceItems = await getAllByApiKeyId(updatedContent.apiKeyId);
       const totalRequests = inferenceItems.length;
       const totalPromptEvalCount = inferenceItems.reduce((acc, item) => acc + item.result.prompt_eval_count, 0);
       const totalEvalCount = inferenceItems.reduce((acc, item) => acc + item.result.eval_count, 0);
@@ -97,7 +87,10 @@ async function handleInferenceResponse(content, msg) {
       const totalCosts = inferenceItems.reduce((acc, item) => acc + item.result.total_cost, 0);
       const totalDurations = inferenceItems.reduce((acc, item) => acc + item.result.total_duration_in_seconds, 0);
 
-      await updateApiKeyUsage(content.apiKeyId, {
+      console.log('Total Requests:', inferenceItems.length);
+      
+
+      await updateApiKeyUsage(updatedContent.apiKeyId, {
         usage: {
           requests: totalRequests,
           prompt_eval_count: totalPromptEvalCount,

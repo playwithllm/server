@@ -7,7 +7,7 @@ const businessMessaging = require('./messaging');
 const auth = require('../../shared/middlewares/auth/authentication');
 const { configureAuthToExpressApp: authRoutes } = require('./auth/api');
 const { isValidKey } = require('./domains/apiKeys/service');
-const { create } = require('./domains/inference/service');
+const { create, getDashboardData } = require('./domains/inference/service');
 
 function formatUptime(uptime) {
   const days = Math.floor(uptime / (24 * 60 * 60));
@@ -40,6 +40,12 @@ function defineRoutes(expressApp) {
     }
 
     const userId = key.userId;
+
+    const { tokenCount } = await getDashboardData(userId);
+
+    if (tokenCount >= 10000) {
+      return res.status(402).json({ message: 'You have exceeded the free token limit (10000) for today. Please try again tomorrow.' });
+    }
 
     try {
       const savedItem = (await create({ prompt, modelName: 'llama3.2-1B', inputTime: new Date(), userId: userId, apiKeyId: key._id.toString() })).toObject();
