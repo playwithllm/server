@@ -6,14 +6,13 @@ const modelName = 'llama3.2:1b';
 async function generateResponse(prompt) {
   try {
     const ollama = new Ollama();
-    console.log('generateResponse\t', prompt);
     const response = await ollama.chat({
       model: modelName,
       messages: [
         { role: 'assistant', content: 'You are a helpful assistant.' },
         { role: 'user', content: prompt }],
     });
-    console.log('generateResponse\t', response);
+    
     return response.message;
   } catch (error) {
     console.error('Error generating response:', error);
@@ -24,7 +23,6 @@ async function generateResponse(prompt) {
 async function generateResponseStream(prompt) {
   try {
     const ollama = new Ollama();
-    console.log('LLAMA WORLD ', prompt);
     const response = await ollama.chat({
       model: modelName,
       messages: [
@@ -49,7 +47,6 @@ async function generateResponseStream(prompt) {
 async function chatResponseStream(messages) {
   try {
     const ollama = new Ollama();
-    console.log('LLAMA WORLD ', messages);
     const response = await ollama.chat({
       model: modelName,
       messages: messages,

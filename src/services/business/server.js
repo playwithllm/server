@@ -18,7 +18,6 @@ const {
   addRequestIdMiddleware,
 } = require('../../shared/middlewares/request-context');
 const { connectWithMongoDb } = require('../../shared/libraries/db');
-const { AppError } = require('../../shared/libraries/error-handling/AppError');
 
 const businessMessaging = require('./messaging');
 
@@ -67,10 +66,6 @@ const setupWebSocket = (server) => {
   // INFERENCE_STREAM_CHUNK
   eventEmitter.on(eventEmitter.EVENT_TYPES.INFERENCE_STREAM_CHUNK, (data) => {
     const { connectionId, ...rest } = data;
-
-    // console.log('INFERENCE_STREAM_CHUNK connectionId', connectionId);
-    // Broadcast the inference response to the client that requested it
-    // io.emit('inferenceResponseChunk', data);
     io.to(connectionId).emit('inferenceResponseChunk', rest);
   });
 
@@ -79,7 +74,6 @@ const setupWebSocket = (server) => {
     eventEmitter.EVENT_TYPES.INFERENCE_STREAM_CHUNK_END,
     (data) => {
       const { connectionId, ...rest } = data;
-      // console.log('INFERENCE_STREAM_CHUNK_END connectionId', connectionId);
       io.to(connectionId).emit('inferenceResponseEnd', rest);
       logger.info('Broadcasted INFERENCE_STREAM_CHUNK_END to all clients');
     }
@@ -131,7 +125,7 @@ const setupWebSocket = (server) => {
     logger.info(`Client connected: ${socket.id}, IP: ${clientIp}`);
 
     // Handle client authentication
-    socket.on('authenticate', (token) => {
+    socket.on('authenticate', () => {
       // TODO: Implement authentication logic
       logger.info(`Client ${socket.id} attempting authentication`);
     });
@@ -150,7 +144,6 @@ const setupWebSocket = (server) => {
       const keys = await getAllApiKeysByUserId(user._id);
       const activeKeys = keys.filter((key) => key.status === 'active');
       if (!activeKeys || activeKeys.length === 0) {
-        // throw new AppError('No active API keys found', 'No API keys found', 404);
         eventEmitter.emit(
           eventEmitter.EVENT_TYPES.DISABLE_CHAT,
           { connectionId: socket.id, message: 'No active API keys found. Please create an API key first.' }
@@ -158,16 +151,12 @@ const setupWebSocket = (server) => {
       }
 
       const key = activeKeys[0];
-      // console.log('key', key);
 
       // save to database
       const savedItem = await create({ prompt: data.message, websocketId: socket.id, modelName: 'llama3.2-1B', inputTime: new Date(), userId: user._id, clientIp, apiKeyId: key._id.toString() });
       // Handle the message
-      // console.log('saved item', { savedItem });
-
       const previousInferences = await getAllByWebsocketId(socket.id);
 
-      // console.log('previousInferences', previousInferences);
       // sum of item.result.prompt_eval_count
       const totalInputTokens = previousInferences.filter((item) => item.result?.prompt_eval_count).reduce((acc, item) => {
         return acc + item.result.prompt_eval_count;
@@ -263,7 +252,7 @@ async function openConnection(expressApp) {
 }
 
 function defineErrorHandlingMiddleware(expressApp) {
-  expressApp.use(async (error, req, res, next) => {
+  expressApp.use(async (error, req, res) => {
     // Note: next is required for Express error handlers
     if (error && typeof error === 'object') {
       if (error.isTrusted === undefined || error.isTrusted === null) {

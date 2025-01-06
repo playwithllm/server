@@ -2,10 +2,8 @@ const LocalStrategy = require('passport-local').Strategy;
 const bcrypt = require('bcrypt');
 const crypto = require('crypto');
 const {
-  getByUsername,
   getByEmail,
   create,
-  updateById,
   findByVerificationToken,
   refreshVerificationToken,
   completeEmailVerification,

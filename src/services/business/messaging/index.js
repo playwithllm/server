@@ -3,7 +3,6 @@ const logger = require('../../../shared/libraries/log/logger');
 const eventEmitter = require('../../../shared/libraries/events/eventEmitter');
 
 const { updateById, getAllByApiKeyId, getById } = require('../../business/domains/inference/service');
-const { updateById: updateApiKeyUsage } = require('../../business/domains/apiKeys/service');
 
 const RABBITMQ_URL = 'amqp://localhost:5672';
 const INFERENCE_QUEUE = 'inference_queue';
@@ -35,22 +34,15 @@ async function initialize() {
 
 async function handleInferenceResponse(content, msg) {
   try {
-    // logger.info('handleInferenceResponse:', content);
-    // console.log('handleInferenceResponse\t', content);
-
     if (!inMemoryValue[content._id]) {
       inMemoryValue[content._id] = '';
     }
 
     if (content.done) {
-      // logger.info('Received inference response:', content);
       inMemoryValue[content._id] += content.result.message.content;
-      // console.log('emitting inference stream chunk end\t', { content, inMemoryValue });
-
       // To calculate how fast the response is generated in tokens per second (token/s), divide eval_count / eval_duration * 10^9.
       const tokensPerSecond = content.result.eval_count / content.result.eval_duration * 1e9;
-      console.log('Speed:', tokensPerSecond);
-
+      
       // cost calculation: 1 BDT per 1M prompt tokens (prompt_eval_count), 2 BDT per 1M response tokens (eval_count)
       const inputCost = content.result.prompt_eval_count / 1e6;
       const outputCost = (content.result.eval_count / 1e6) * 2;
@@ -75,34 +67,6 @@ async function handleInferenceResponse(content, msg) {
 
       await updateById(content._id, { response: inMemoryValue[content._id], status: 'completed', result: updatedResult });
 
-      const updatedContent = await getById(content._id);
-
-      const inferenceItems = await getAllByApiKeyId(updatedContent.apiKeyId);
-      const totalRequests = inferenceItems.length;
-      const totalPromptEvalCount = inferenceItems.reduce((acc, item) => acc + item.result?.prompt_eval_count ? 0 : 0, 0);
-      const totalEvalCount = inferenceItems.reduce((acc, item) => acc + item.result?.eval_count ? 0 : 0, 0);
-      const totalCount = totalPromptEvalCount + totalEvalCount;
-      const totalPromptEvalCost = inferenceItems.reduce((acc, item) => acc + item.result?.prompt_eval_cost ? 0 : 0, 0);
-      const totalEvalCost = inferenceItems.reduce((acc, item) => acc + item.result?.eval_cost ? 0 : 0, 0);
-      const totalCosts = inferenceItems.reduce((acc, item) => acc + item.result?.total_cost ? 0 : 0, 0);
-      const totalDurations = inferenceItems.reduce((acc, item) => acc + (item.result?.total_duration_in_seconds ? 0 : 0), 0);
-
-      console.log('Total Requests:', inferenceItems.length);
-
-
-      // await updateApiKeyUsage(updatedContent.apiKeyId, {
-      //   usage: {
-      //     requests: totalRequests,
-      //     prompt_eval_count: totalPromptEvalCount,
-      //     eval_count: totalEvalCount,
-      //     total_count: totalCount,
-      //     prompt_eval_cost: totalPromptEvalCost,
-      //     eval_cost: totalEvalCost,
-      //     total_cost: totalCosts,
-      //     total_duration: totalDurations
-      //   }
-      // });
-
       // clear in-memory value
       inMemoryValue[content._id] = undefined;
       eventEmitter.emit(
@@ -117,8 +81,6 @@ async function handleInferenceResponse(content, msg) {
         eventEmitters.delete(content._id);
       }
     } else {
-      // logger.info('Received inference chunk response:', content);
-      // console.log('emitting inference stream chunk\t', { content, msg });
       inMemoryValue[content._id] += content.result.message.content;
       eventEmitter.emit(
         eventEmitter.EVENT_TYPES.INFERENCE_STREAM_CHUNK,

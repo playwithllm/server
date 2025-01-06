@@ -1,5 +1,4 @@
 const Joi = require('joi');
-const mongoose = require('mongoose');
 
 const createSchema = Joi.object().keys({
   name: Joi.string().optional(),
