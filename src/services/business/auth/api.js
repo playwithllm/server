@@ -16,7 +16,7 @@ const {
 
 const { AppError } = require('../../../shared/libraries/error-handling/AppError');
 
-const { getClientPermissionsByRoleIdentifierSync } = require('../domains/admin/role/service');
+// const { getClientPermissionsByRoleIdentifierSync } = require('../domains/admin/role/service');
 
 // Helper function to create consistent trimmed user object
 const createTrimmedUser = (user) => ({
@@ -211,9 +211,9 @@ const configureAuthToExpressApp = (expressApp) => {
           .json({ message: info.message || 'Authentication failed', reason: info.reason });
       }
 
-      user.permissions = {
-        client: await getClientPermissionsByRoleIdentifierSync(user.role),
-      };
+      // user.permissions = {
+      //   client: await getClientPermissionsByRoleIdentifierSync(user.role),
+      // };
 
       req.logIn(user, (err) => {
         if (err) {
