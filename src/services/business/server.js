@@ -196,15 +196,15 @@ const setupWebSocket = (server) => {
       if (previousInferences.length > 0) {
         previousInferences.forEach((item) => {
           const prompt = { role: 'user', content: [{ type: 'text', text: item.prompt }] };
-          // if (item.imageBase64) {
-          //   const img = {
-          //     type: 'image_url',
-          //     image_url: {
-          //       url: `data:image/jpeg;base64,${item.imageBase64}`
-          //     }
-          //   }
-          //   prompt.content.push(img);
-          // }
+          if (item.imageBase64) {
+            const img = {
+              type: 'image_url',
+              image_url: {
+                url: `data:image/jpeg;base64,${item.imageBase64}`
+              }
+            }
+            prompt.content.push(img);
+          }
           // user - item.prompt
           chatMessagesForLLM.push(prompt);
           // assistant - item.response

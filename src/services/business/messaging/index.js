@@ -48,70 +48,95 @@ async function initialize() {
     });
 
     await setupConsumers();
-    console.info('Inference service messaging initialized');
+    console.info('Business service messaging initialized');
   } catch (error) {
     console.error('Failed to initialize RabbitMQ connection:', error);
     setTimeout(initialize, 5000); // Retry connection after 5 seconds
   }
 }
 
-async function handleInferenceResponseOpenAI(content, msg) {
+async function handleInferenceResponseOpenAI(chunk, msg, mqClient) {
   try {
-    console.log('handleInferenceResponseOpenAI:', content._id);
-    
-    if (!inMemoryValue[content._id]) {
-      inMemoryValue[content._id] = '';
+    console.log('handleInferenceResponseOpenAI:', chunk);
+
+    if (!inMemoryValue[chunk._id]) {
+      inMemoryValue[chunk._id] = '';
     }
 
-    const isComplete = content.result.choices[0].finish_reason === 'stop';
-    const chunkContent = content.result.choices[0].delta.content || '';
-    
+    const isComplete = chunk?.result?.choices?.length === 0;
+    const chunkContent = chunk?.result?.choices[0]?.delta?.content || '';
+
     if (isComplete) {
-      // Handle completion
-      const updatedResult = {
-        id: content.result.id,
-        model: content.result.model,
-        created: content.result.created,
-        response: inMemoryValue[content._id],
-        timestamp: content.timestamp
+      console.log('handleInferenceResponseOpenAI-isComplete:', chunk);
+
+      // calculate the cost from the usage coming from the response
+      /**
+       * 
+        prompt_tokens 3402
+        total_tokens 3474
+        completion_tokens 72
+      */
+
+      const prompt_tokens = chunk.result.usage?.prompt_tokens || 0;
+      const total_tokens = chunk.result.usage?.total_tokens || 0;
+      const completion_tokens = chunk.result.usage?.completion_tokens || 0;
+
+      const prompt_cost = prompt_tokens / 1e6;
+      const completion_cost = completion_tokens / 1e6;
+      const total_cost = prompt_cost + completion_cost;
+
+      const usage = {
+        ...chunk.result.usage,
+        prompt_cost,
+        completion_cost,
+        total_cost
       };
 
-      await updateById(content._id, { 
-        response: inMemoryValue[content._id], 
-        status: 'completed', 
-        result: updatedResult 
+      // Handle completion
+      const updatedResult = {
+        id: chunk.result.id,
+        model: chunk.result.model,
+        created: chunk.result.created,        
+        timestamp: chunk.timestamp,        
+        ...usage
+      };
+
+      await updateById(chunk._id, {
+        response: inMemoryValue[chunk._id],
+        status: 'completed',
+        result: updatedResult
       });
 
       // Clear memory and emit completion events
-      inMemoryValue[content._id] = undefined;
+      inMemoryValue[chunk._id] = undefined;
       eventEmitter.emit(
         eventEmitter.EVENT_TYPES.INFERENCE_STREAM_CHUNK_END,
-        content
+        chunk
       );
 
-      const emitter = eventEmitters.get(content._id);
+      const emitter = eventEmitters.get(chunk._id);
       if (emitter) {
-        emitter.emit('inferenceStreamChunkEnd', content);
-        eventEmitters.delete(content._id);
+        emitter.emit('inferenceStreamChunkEnd', chunk);
+        eventEmitters.delete(chunk._id);
       }
     } else {
       // Handle streaming chunk
-      inMemoryValue[content._id] += chunkContent;
+      inMemoryValue[chunk._id] += chunkContent;
       eventEmitter.emit(
         eventEmitter.EVENT_TYPES.INFERENCE_STREAM_CHUNK,
-        content
+        chunk
       );
 
-      const emitter = eventEmitters.get(content._id);
+      const emitter = eventEmitters.get(chunk._id);
       if (emitter) {
-        emitter.emit('inferenceStreamChunk', content);
+        emitter.emit('inferenceStreamChunk', chunk);
       }
     }
 
-    await client.ack(msg);
+    await mqClient.ack(msg);
   } catch (error) {
     logger.error('Error processing inference response:', error);
-    await client.nack(msg, true);
+    await mqClient.nack(msg, true);
   }
 }
 
@@ -136,7 +161,7 @@ async function handleInferenceResponseOllama(content, msg, mqClient) {
       // durations in seconds (total_duration, eval_duration, prompt_eval_duration)
       const prompt_eval_duration_in_seconds = content.result?.prompt_eval_duration ? content.result?.prompt_eval_duration / 1e9 : 0;
       const eval_duration_in_seconds = content.result?.eval_duration ? content.result?.eval_duration / 1e9 : 0;
-      const total_duration_in_seconds = content.result?.total_duration ? content.result?.total_duration / 1e9: 0;
+      const total_duration_in_seconds = content.result?.total_duration ? content.result?.total_duration / 1e9 : 0;
 
       const updatedResult = {
         ...content.result,

@@ -26,6 +26,13 @@ async function initialize() {
     client = new RabbitMQClient(RABBITMQ_URL);
     await client.connect();
 
+    // Add reconnection handling
+    client.connection.on('close', async () => {
+      logger.warn('RabbitMQ connection closed, attempting to reconnect...');
+      client = null; // Reset client so it can be recreated
+      setTimeout(initialize, 5000);
+    });
+
     // Setup queues
     await client.setupQueue(INFERENCE_QUEUE);
     await client.setupQueue(BUSINESS_QUEUE);
@@ -40,29 +47,28 @@ async function initialize() {
 
         if (!prompts || prompts.length === 0) {
           logger.error('No prompts provided for inference');
-          await mqClient.ack(msg);
+          await client.ack(msg);
           return;
         }
 
         try {
           // Create unique event handlers
           const handleStreamChunk = async (part) => {
+            console.log('handleStreamChunk:', part);
             await client.publishMessage(BUSINESS_QUEUE, {
               // originalRequest: content,
               result: part,
               timestamp: new Date().toISOString(),
-              done: part.done,
               connectionId,
               _id
             });
-
           };
 
           const handleStreamChunkEnd = async (part) => {
+            console.log('handleStreamChunkEnd:', part);
             await client.publishMessage(BUSINESS_QUEUE, {
               result: part,
               timestamp: new Date().toISOString(),
-              done: part.done,
               connectionId,
               _id
             });
@@ -94,8 +100,8 @@ async function initialize() {
             status: 'failed',
             timestamp: new Date().toISOString(),
           });
-          // no need to handle the error cases, simply ack the message
-          await mqClient.ack(msg);
+          // Add connection check before nack
+          await mqClient.nack(msg, true);
         }
       }
     );

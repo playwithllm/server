@@ -2,6 +2,7 @@
 // import fs from 'fs';
 const OpenAI = require('openai');
 const fs = require('fs');
+const axios = require('axios');
 const eventEmitter = require('../../../shared/libraries/events/eventEmitter'); // Import EventEmitter
 
 
@@ -12,7 +13,7 @@ const createVLLMClient = (baseURL = 'http://192.168.4.28:8000/v1') => {
   });
 };
 
- async function generateCompletion(input, options = {}) {
+async function generateCompletion(input, options = {}) {
   try {
     const vllm = createVLLMClient();
 
@@ -37,7 +38,7 @@ const createVLLMClient = (baseURL = 'http://192.168.4.28:8000/v1') => {
 }
 
 
- async function generateCompletionWithImage(prompts) {
+async function generateCompletionWithImage_SDK(prompts) {
   try {
     const client = createVLLMClient();
     console.log('generateCompletionWithImage:', prompts);
@@ -67,8 +68,12 @@ const createVLLMClient = (baseURL = 'http://192.168.4.28:8000/v1') => {
         // }
         ...prompts
       ],
-      temperature: 0.7,
+      // temperature: 0.7,
       stream: true,
+      stream_options: {
+        "include_usage": true,
+        "include_response_metadata": true
+      }
     };
 
     // const response = await client.chat.completions.create({
@@ -82,15 +87,80 @@ const createVLLMClient = (baseURL = 'http://192.168.4.28:8000/v1') => {
     const response = await client.chat.completions.create(defaultOptions);
 
     for await (const part of response) {
-      console.log('generateCompletionWithImage response:', part.choices);
-      if (part.done) {
-        eventEmitter.emit(eventEmitter.EVENT_TYPES.INFERENCE_STREAM_CHUNK_END, part); // Emit event for end of stream
-        return '';
+      console.log('generateCompletionWithImage response usage:', part);
+      if (part?.choices[0]?.finish_reason === 'stop') {
+        console.log('generateCompletionWithImage response-stop:', part);
+        eventEmitter.emit(eventEmitter.EVENT_TYPES.INFERENCE_STREAM_CHUNK_END, part); // Emit event for end of stream     
+        return part;
+      } else {
+        eventEmitter.emit(eventEmitter.EVENT_TYPES.INFERENCE_STREAM_CHUNK, part); // Emit event for each chunk
       }
-      eventEmitter.emit(eventEmitter.EVENT_TYPES.INFERENCE_STREAM_CHUNK, part); // Emit event for each chunk
     }
 
-    return 'DONE';
+    return response;
+  } catch (error) {
+    console.error('Error generating completion with image:', error.message);
+    throw error;
+  }
+}
+
+async function generateCompletionWithImage(prompts) {
+  try {
+    const response = await axios({
+      method: 'post',
+      url: 'http://192.168.4.28:8000/v1/chat/completions',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      data: {
+        model: 'OpenGVLab/InternVL2_5-1B',
+        stream: true,
+        stream_options: {
+          include_usage: true
+        },
+        messages: prompts
+      },
+      responseType: 'stream'
+    });
+
+    // Handle the stream
+    response.data.on('data', chunk => {
+      try {
+        // Remove 'data: ' prefix and parse JSON
+        const cleanedLine = chunk.toString().replace(/^data: /, '');
+        // console.log('generateCompletionWithImage response-cleanedLine:', cleanedLine);
+        // Handle the [DONE] message
+        if (cleanedLine.trim() === '[DONE]') {
+          console.log('generateCompletionWithImage response-cleanedLine-DONE:', cleanedLine);
+          // eventEmitter.emit(eventEmitter.EVENT_TYPES.INFERENCE_STREAM_CHUNK_END);
+          return 'DONE';
+        }
+
+        const parsedChunk = JSON.parse(cleanedLine);
+        // console.log('generateCompletionWithImage response-parsedChunk:', parsedChunk);
+
+        // when choices: [], emit done event
+        if (parsedChunk.choices.length === 0) {
+          console.log('generateCompletionWithImage response-parsedChunk-choices-0:', parsedChunk);
+          eventEmitter.emit(eventEmitter.EVENT_TYPES.INFERENCE_STREAM_CHUNK_END, parsedChunk);
+          return 'DONE';
+        }
+
+        // Handle content chunks
+        if (parsedChunk.choices?.length > 0) {
+          console.log('generateCompletionWithImage response-parsedChunk-streaming:', parsedChunk.choices[0].delta.content);
+          eventEmitter.emit(eventEmitter.EVENT_TYPES.INFERENCE_STREAM_CHUNK, parsedChunk);
+        }
+      } catch (error) {
+        console.error('Error processing chunk:', error);
+      }
+    });
+
+    return new Promise((resolve, reject) => {
+      response.data.on('end', () => resolve({ status: 'completed' }));
+      response.data.on('error', reject);
+    });
+
   } catch (error) {
     console.error('Error generating completion with image:', error.message);
     throw error;

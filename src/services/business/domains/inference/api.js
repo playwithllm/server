@@ -7,6 +7,7 @@ const {
   count,
   getGroupedEvaluationCounts,
   getDashboardData,
+  getAllByWebsocketId,
 } = require('./service');
 
 const {
@@ -71,6 +72,17 @@ const routes = () => {
       const user = req.user;
       const dashboardData = await getDashboardData(user._id);
       res.json(dashboardData);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // get messages by connectionId
+  router.get('/messages/:connectionId', async (req, res, next) => {
+    try {
+      logger.info(`Getting messages for connectionId: ${req.params.connectionId}`);
+      const messages = await getAllByWebsocketId(req.params.connectionId);
+      res.json(messages);
     } catch (error) {
       next(error);
     }
