@@ -40,6 +40,7 @@
     "nodemon": "^3.1.0",
     "octokit": "^3.2.1",
     "ollama": "^0.5.11",
+    "openai": "^4.78.0",
     "passport": "^0.7.0",
     "passport-github2": "^0.1.12",
     "passport-google-oauth20": "^2.0.0",

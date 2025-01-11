@@ -61,6 +61,7 @@ const setupWebSocket = (server) => {
       methods: ['GET', 'POST'],
       credentials: true,
     },
+    maxPayload: 5 * 1024 * 1024, // 5MB in bytes
   });
 
   // INFERENCE_STREAM_CHUNK
@@ -139,7 +140,7 @@ const setupWebSocket = (server) => {
     socket.on('inferenceRequest', async (data) => {
       const user = socket.user;
       console.log('Authenticated user:', user);
-      console.log('Received message from:', socket.id, data);
+      console.log('Received message from:', socket.id);
 
       const keys = await getAllApiKeysByUserId(user._id);
       const activeKeys = keys.filter((key) => key.status === 'active');
@@ -153,7 +154,7 @@ const setupWebSocket = (server) => {
       const key = activeKeys[0];
 
       // save to database
-      const savedItem = await create({ prompt: data.message, websocketId: socket.id, modelName: 'llama3.2-1B', inputTime: new Date(), userId: user._id, clientIp, apiKeyId: key._id.toString() });
+      const savedItem = await create({ prompt: data.message, websocketId: socket.id, modelName: 'OpenGVLab/InternVL2_5-1B', inputTime: new Date(), userId: user._id, clientIp, apiKeyId: key._id.toString(), imageBase64: data.imageBase64 });
       // Handle the message
       const previousInferences = await getAllByWebsocketId(socket.id);
 
@@ -192,11 +193,20 @@ const setupWebSocket = (server) => {
       }
 
       const chatMessagesForLLM = [];
-      chatMessagesForLLM.push({ role: 'assistant', content: 'You are a helpful assistant.' });
       if (previousInferences.length > 0) {
         previousInferences.forEach((item) => {
+          const prompt = { role: 'user', content: [{ type: 'text', text: item.prompt }] };
+          // if (item.imageBase64) {
+          //   const img = {
+          //     type: 'image_url',
+          //     image_url: {
+          //       url: `data:image/jpeg;base64,${item.imageBase64}`
+          //     }
+          //   }
+          //   prompt.content.push(img);
+          // }
           // user - item.prompt
-          chatMessagesForLLM.push({ role: 'user', content: item.prompt });
+          chatMessagesForLLM.push(prompt);
           // assistant - item.response
           if (item.response) {
             chatMessagesForLLM.push({ role: 'assistant', content: item.response });

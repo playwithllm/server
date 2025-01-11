@@ -6,6 +6,7 @@ const InferenceSchema = new mongoose.Schema(
     userId: { type: String, required: true },
     apiKeyId: { type: String, required: true },
     prompt: { type: String, required: true },
+    imageBase64: { type: String },
     websocketId: { type: String },
     response: { type: String },
     status: {

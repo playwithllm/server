@@ -2,8 +2,8 @@ const RabbitMQClient = require('../../../shared/libraries/util/rabbitmq');
 const logger = require('../../../shared/libraries/log/logger');
 const eventEmitter = require('../../../shared/libraries/events/eventEmitter');
 
-const { generateResponse, chatResponseStream } = require('../ollama');
-
+// const { generateResponse, chatResponseStream } = require('../ollama');
+const { generateCompletionWithImage } = require('../vllm/openai-vllm');
 const RABBITMQ_URL = 'amqp://localhost:5672';
 const INFERENCE_QUEUE = 'inference_queue';
 const BUSINESS_QUEUE = 'business_queue';
@@ -79,7 +79,8 @@ async function initialize() {
             handleStreamChunkEnd
           );
 
-          await chatResponseStream(prompts);
+          // await chatResponseStream(prompts);
+          await generateCompletionWithImage(prompts);
 
           await mqClient.ack(msg);
 
@@ -88,13 +89,13 @@ async function initialize() {
           logger.error('Error processing inference:', error);
 
           await client.publishMessage(BUSINESS_QUEUE, {
-            originalRequest: content,
+            originalRequest: prompts,
             error: error.message,
             status: 'failed',
             timestamp: new Date().toISOString(),
           });
-
-          await mqClient.nack(msg, true);
+          // no need to handle the error cases, simply ack the message
+          await mqClient.ack(msg);
         }
       }
     );

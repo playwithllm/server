@@ -1,7 +1,7 @@
 const { Ollama } = require('ollama');
 const eventEmitter = require('../../../shared/libraries/events/eventEmitter'); // Import EventEmitter
 
-const modelName = 'llama3.2:1b';
+const modelName = 'minicpm-v:latest';
 
 async function generateResponse(prompt) {
   try {
@@ -22,7 +22,7 @@ async function generateResponse(prompt) {
 
 async function generateResponseStream(prompt) {
   try {
-    const ollama = new Ollama();
+    const ollama = new Ollama({ host: 'http://192.168.4.28:11435' });
     const response = await ollama.chat({
       model: modelName,
       messages: [
@@ -46,7 +46,7 @@ async function generateResponseStream(prompt) {
 
 async function chatResponseStream(messages) {
   try {
-    const ollama = new Ollama();
+    const ollama = new Ollama({ host: 'http://192.168.4.28:11435' });
     const response = await ollama.chat({
       model: modelName,
       messages: messages,
