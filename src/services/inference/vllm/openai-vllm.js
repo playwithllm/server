@@ -37,6 +37,11 @@ async function generateCompletion(input, options = {}) {
   }
 }
 
+const MODEL = {
+  INTERN_VL2_5_1B_MPO: 'OpenGVLab/InternVL2_5-1B-MPO',
+  INTERN_VL2_5_1B: 'OpenGVLab/InternVL2_5-1B',
+};
+
 
 async function generateCompletionWithImage_SDK(prompts) {
   try {
@@ -51,7 +56,7 @@ async function generateCompletionWithImage_SDK(prompts) {
      */
 
     const defaultOptions = {
-      model: 'OpenGVLab/InternVL2_5-1B', // example model, replace with your loaded model
+      model: MODEL.INTERN_VL2_5_1B_MPO, // example model, replace with your loaded model
       messages: [
         // {
         //   role: 'user',
@@ -113,7 +118,7 @@ async function generateCompletionWithImage(prompts) {
         'Content-Type': 'application/json',
       },
       data: {
-        model: 'OpenGVLab/InternVL2_5-1B',
+        model: MODEL.INTERN_VL2_5_1B_MPO,
         stream: true,
         stream_options: {
           include_usage: true
