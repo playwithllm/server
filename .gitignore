@@ -134,3 +134,9 @@ config.test.json
 # Debug emails
 **/debug/**
 .DS_Store
+
+# docker volumes
+docker/volumes/
+
+# migration data
+products.csv

@@ -18,7 +18,7 @@ function formatUptime(uptime) {
   return `${days}d ${hours}h ${minutes}m ${seconds}s`;
 }
 
-function defineRoutes(expressApp) {
+async function defineRoutes(expressApp) {
   logger.info('Defining routes...');
   authRoutes(expressApp);
 
@@ -67,7 +67,7 @@ function defineRoutes(expressApp) {
   });
 
   const businessRouter = express.Router();
-  domainRoutes(businessRouter);
+  await domainRoutes(businessRouter);
 
   // we need to call `auth.isAuthenticated` like this so that we can mock the auth module in tests
   expressApp.use('/api/v1', auth.isAuthenticated, businessRouter);

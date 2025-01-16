@@ -27,7 +27,7 @@ const { create, getAllByWebsocketId, getDashboardData } = require('./domains/inf
 let connection;
 let io;
 
-const createExpressApp = () => {
+const createExpressApp = async () => {
   const expressApp = express();
   expressApp.use(addRequestIdMiddleware);
   expressApp.use(helmet());
@@ -49,7 +49,7 @@ const createExpressApp = () => {
 
   logger.info('Express middlewares are set up');
 
-  defineRoutes(expressApp);
+  await defineRoutes(expressApp);
   defineErrorHandlingMiddleware(expressApp);
   return expressApp;
 };
@@ -223,7 +223,7 @@ const setupWebSocket = (server) => {
 
 async function startWebServer() {
   logger.info('Starting web server...');
-  const expressApp = createExpressApp();
+  const expressApp = await createExpressApp();
   const APIAddress = await openConnection(expressApp);
   logger.info(`Server is running on ${APIAddress.address}:${APIAddress.port}`);
 
