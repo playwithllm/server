@@ -9,7 +9,8 @@ const {
   create,
   getAll,
   getById,
-  search
+  search,
+  ragSearch
 } = require('./service');
 
 const {
@@ -50,7 +51,7 @@ const routes = async () => {
     validateRequest({ schema: searchSchema, isQuery: true }),
     async (req, res, next) => {
       try {
-        const items = await search(req.query);
+        const items = await ragSearch(req.query);
         res.json(items);
       } catch (error) {
         next(error);

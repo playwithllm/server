@@ -25,6 +25,8 @@ async function populateProducts(multimodalProcessor) {
     const products = await parseProductsCSV('./products-light.csv');
     console.log(`Found ${products.length} products to process`);
 
+    // const oneItemArray = [products[0]];
+
     for (const product of products) {
       try {
         // Check both MongoDB and vector database
@@ -46,15 +48,26 @@ async function populateProducts(multimodalProcessor) {
 
         // Store embedding in Milvus only if vector doesn't exist
         if (!existingVector.length) {
-          await multimodalProcessor.storeProductEmbedding(
+          const { expandedText } = await multimodalProcessor.storeProductEmbedding(
             product.id,
-            product.name
+            product
           );
-          console.log(`Stored vector embedding for product: ${product.id}`);
+          
+          // Update MongoDB document with expanded text
+          await Product.findOneAndUpdate(
+            { sourceId: product.id },
+            { expandedText },
+            { new: true }
+          );
+          
+          console.log(`Stored vector embedding and expanded text for product: ${product.id}`);
+          await new Promise(resolve => setTimeout(resolve, 1000));
         }
 
+
+
         // Add a small delay between operations
-        await new Promise(resolve => setTimeout(resolve, 500));
+        await new Promise(resolve => setTimeout(resolve, 1000));
 
         // Verify after each insert
         const stats = await multimodalProcessor.getCollectionStats();

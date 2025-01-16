@@ -7,6 +7,8 @@ const os = require('os');
 
 const logger = require('../log/logger');
 
+const vllmClient = require('../../../services/inference/vllm/openai-vllm');
+
 class MultimodalProcessor {
   constructor() {
     this.milvusClient = new MilvusClient({
@@ -33,7 +35,7 @@ class MultimodalProcessor {
 
       // Initialize models with smaller, public versions
       this.clipModel = await this.pipeline('feature-extraction', 'Xenova/all-MiniLM-L6-v2');
-      this.captionModel = await this.pipeline('image-to-text', 'Xenova/vit-gpt2-image-captioning');
+      // this.captionModel = await this.pipeline('image-to-text', 'Xenova/vit-gpt2-image-captioning');
 
       // Initialize the embedding model
       this.embeddingModel = await this.pipeline('feature-extraction', 'Xenova/all-MiniLM-L6-v2');
@@ -103,7 +105,28 @@ class MultimodalProcessor {
     }
   }
 
-  async getEmbedding(text) {
+  async expandTextWithVLLM(text) {
+    console.log('expandTextWithVLLM(): text:', text);
+    try {
+      const prompt = `Given the text: "${text}"
+Generate 3-5 closely related terms or phrases that capture similar semantic meaning.
+Only output the terms separated by commas, nothing else.
+For example:
+Input: "dog"
+Output: puppy, canine, pet dog, domestic dog`;
+      console.log('expandTextWithVLLM(): prompt:', prompt);
+      const vllmResponse = await vllmClient.generateCompletion(prompt);
+      const vllmResponseText = vllmResponse.choices[0].message.content;
+      const combinedText = `${text} ${vllmResponseText}`.trim();
+      logger.info(`Expanded "${text}" to: ${combinedText}`);
+      return combinedText;
+    } catch (error) {
+      logger.warn('Text expansion failed, using original text:', error);
+      return text;
+    }
+  }
+
+  async getEmbedding(text, useExpansion = true) {
     try {
       if (!this.embeddingModel) {
         throw new Error('Embedding model not initialized. Please call init() first.');
@@ -118,13 +141,16 @@ class MultimodalProcessor {
         throw new Error('Input text cannot be empty');
       }
 
-      // Use the model to generate embeddings
-      const output = await this.embeddingModel(cleanText, {
+      // Only expand text if flag is true and text isn't too long
+      const textToEmbed = useExpansion && cleanText.length < 100
+        ? await this.expandTextWithVLLM(cleanText)
+        : cleanText;
+
+      const output = await this.embeddingModel(textToEmbed, {
         pooling: 'mean',
         normalize: true
       });
 
-      // Convert to array if needed
       return Array.from(output.data);
     } catch (error) {
       logger.error('Error getting text embedding:', error);
@@ -139,13 +165,13 @@ class MultimodalProcessor {
       console.log('Existing collections:', collections);
 
       const collectionExists = collections.collection_names.includes(this.collectionName);
-      
+
       if (collectionExists) {
         console.log(`Collection ${this.collectionName} exists, loading...`);
         await this.milvusClient.loadCollection({
           collection_name: this.collectionName
         });
-        
+
         // Get and log current collection statistics
         const stats = await this.getCollectionStats();
         console.log('Collection loaded with stats:', stats);
@@ -201,37 +227,37 @@ class MultimodalProcessor {
     }
   }
 
-  async storeProductEmbedding(productId, name) {
+  async storeProductEmbedding(productId, product) {
     try {
-      console.log(`Getting embedding for product: ${productId} - ${name}`);
-      const embedding = await this.getEmbedding(name);
-      console.log(`Got embedding of length: ${embedding.length}`);
+      // Get expanded text for the product name
+      const expandedText = await this.expandTextWithVLLM(product.name);
+
+      // Combine name and expanded text for embedding
+      const textToEmbed = `${product.name} ${expandedText}`.trim();
+      const embedding = await this.getEmbedding(textToEmbed, false);
 
       const insertData = {
         collection_name: this.collectionName,
         fields_data: [{
-          id: parseInt(Date.now().toString() + Math.floor(Math.random() * 1000)), // Generate a unique numeric ID
+          id: parseInt(Date.now().toString() + Math.floor(Math.random() * 1000)),
           product_name_vector: embedding,
           metadata: {
             productId,
-            name,
+            name: product.name,
             created_at: new Date().toISOString()
           }
         }]
       };
-      console.log('Inserting data:', JSON.stringify(insertData, null, 2));
 
-      const result = await this.milvusClient.insert(insertData);
-      console.log('Insert result:', result);
-
-      // Flush after insert to ensure data is persisted
+      await this.milvusClient.insert(insertData);
       await this.milvusClient.flush({
         collection_names: [this.collectionName]
       });
 
-      return embedding;
+      // Return expanded text so it can be saved in MongoDB
+      return { embedding, expandedText };
     } catch (error) {
-      console.error(`Error storing product embedding for ${productId}:`, error);
+      logger.error(`Error storing product embedding for ${productId}:`, error);
       throw error;
     }
   }
@@ -316,25 +342,33 @@ class MultimodalProcessor {
 
   async searchProductEmbedding(searchText, limit = 5) {
     try {
-      const queryVector = await this.getEmbedding(searchText);
-
+      console.log('searchProductEmbedding(): searchText:', searchText);
+      // For search queries, we want to be more aggressive with expansion
+      const expandedQuery = await this.expandTextWithVLLM(searchText);
+      console.log('searchProductEmbedding(): expandedQuery:', expandedQuery);
+      const queryVector = await this.getEmbedding(expandedQuery, false); // false because text is already expanded
       const searchResults = await this.milvusClient.search({
         collection_name: this.collectionName,
         vector: queryVector,
         field_name: 'product_name_vector',
-        limit,
-        params: { nprobe: 10 },
-        output_fields: ['metadata']  // Include metadata in results
+        limit: limit * 2, // Get more results initially for better filtering
+        params: { nprobe: 16 }, // Increased from 10 for better recall
+        output_fields: ['metadata']
       });
-      console.log('searchProductEmbedding.searchResults', JSON.stringify(searchResults.results));
-      const processedData = searchResults.results.map(result => ({
-        productId: result.metadata.productId,
-        name: result.metadata.name,
-        score: result.score,
-        created_at: result.metadata.created_at
-      }));
-      console.log('searchProductEmbedding.processedData', JSON.stringify(processedData));
-      // Transform results to a more usable format
+
+      // Process and rank results considering semantic similarity
+      const processedData = searchResults.results
+        .map(result => ({
+          productId: result.metadata.productId,
+          name: result.metadata.name,
+          score: result.score,
+          created_at: result.metadata.created_at
+        }))
+        // Optional: Additional relevance scoring logic here
+        .sort((a, b) => b.score - a.score)
+        .slice(0, limit);
+
+      logger.debug('Search results for:', searchText, processedData);
       return processedData;
     } catch (error) {
       logger.error('Error searching product embedding:', error);
@@ -423,6 +457,107 @@ class MultimodalProcessor {
       }
     } catch (error) {
       logger.error('Error deleting collection:', error);
+      throw error;
+    }
+  }
+
+  async semanticSearch(userQuery, contextSize = 5) {
+    try {
+      // First, understand the intent of the query using VLLM
+      const searchQuery = await vllmClient.generateCompletion(`
+Convert this user question into a search-optimized query. 
+Keep only the essential search terms.
+User question: "${userQuery}"`);
+
+      const queryResponseText = searchQuery.choices[0].message.content;
+
+      // Get expanded results
+      const results = await this.searchProductEmbedding(queryResponseText, contextSize);
+
+      console.log('semanticSearch(): results:', results);
+
+      // Format results for chatbot context
+      const context = results.map(r => ({
+        content: r.name,
+        score: r.score,
+        metadata: r.metadata
+      }));
+
+      return {
+        originalQuery: userQuery,
+        searchQuery,
+        results: context
+      };
+    } catch (error) {
+      logger.error('Error in semantic search:', error);
+      throw error;
+    }
+  }
+
+  async ragSearch(Product, query, limit = 5) {
+    try {
+      // Get semantic meaning of the query
+//       const semanticQuery = await vllmClient.generateCompletion(`
+// Convert this user question into a search-optimized query. 
+// Keep only the essential search terms.
+// User question: "${query}"`);
+
+//       const semanticQueryText = semanticQuery.choices[0].message.content;
+
+      // Search in Milvus
+      const searchResults = await this.searchProductEmbedding(query, limit);
+
+      console.log('ragSearch(): searchResults:', searchResults);
+
+      // Get product IDs from results
+      const productIds = searchResults.map(result => result.productId);
+
+      // Fetch full product details from MongoDB
+      const products = await Product.find({ sourceId: { $in: productIds } });
+
+      // Prepare context for LLM
+      const context = products.map(p => `
+Product ID: ${p.sourceId}
+Name: ${p.name}
+Description: ${p.aboutProduct}
+Price: ${p.price}
+Category: ${p.category}
+`).join('\n---\n');
+
+      // Generate LLM prompt
+      const prompt = `User Query: "${query}"
+
+Available Products:
+${context}
+
+Based on the user's query, analyze these products and return ONLY the product IDs that best match the query.
+Format your response as a comma-separated list of product IDs, nothing else.
+Example response format: "123, 456, 789"`;
+
+      // Get LLM response
+      const llmResponse = await vllmClient.generateCompletion(prompt);
+
+      console.log('ragSearch(): LLM response:', llmResponse.choices[0].message);
+
+      // Extract product IDs from LLM response
+      const recommendedIds = llmResponse.choices[0].message.content
+        .split(',')
+        .map(id => id.trim())
+        .filter(Boolean);
+
+      // Fetch final products in order of recommendation
+      const finalProducts = await Product.find({
+        sourceId: { $in: recommendedIds }
+      });
+
+      // Sort products according to LLM's recommendation order
+      const sortedProducts = recommendedIds
+        .map(id => finalProducts.find(p => p.sourceId === id))
+        .filter(Boolean);
+
+      return sortedProducts;
+    } catch (error) {
+      logger.error('Error in RAG search:', error);
       throw error;
     }
   }

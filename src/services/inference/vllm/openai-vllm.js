@@ -1,7 +1,4 @@
-// import OpenAI from 'openai';
-// import fs from 'fs';
 const OpenAI = require('openai');
-const fs = require('fs');
 const axios = require('axios');
 const eventEmitter = require('../../../shared/libraries/events/eventEmitter'); // Import EventEmitter
 
@@ -18,11 +15,12 @@ async function generateCompletion(input, options = {}) {
     const vllm = createVLLMClient();
 
     const defaultOptions = {
-      model: 'OpenGVLab/InternVL2_5-1B', // example model, replace with your loaded model
+      model: MODEL.INTERN_VL2_5_1B_MPO, // example model, replace with your loaded model
       messages: [
         { role: 'user', content: input }
       ],
       temperature: 0.7,
+      stream: false,
     };
 
     const response = await vllm.chat.completions.create({
@@ -30,7 +28,9 @@ async function generateCompletion(input, options = {}) {
       ...options,
     });
 
-    return response.choices[0].message.content;
+    console.log('generateCompletion response:', JSON.stringify(response));
+
+    return response;
   } catch (error) {
     console.error('Error calling vLLM:', error);
     throw error;
@@ -57,37 +57,14 @@ async function generateCompletionWithImage_SDK(prompts) {
 
     const defaultOptions = {
       model: MODEL.INTERN_VL2_5_1B_MPO, // example model, replace with your loaded model
-      messages: [
-        // {
-        //   role: 'user',
-        //   content: [
-        //     // { type: 'text', text: prompt },
-        //     // {
-        //     //   type: 'image_url',
-        //     //   image_url: {
-        //     //     url: `data:image/jpeg;base64,${base64Image}`
-        //     //   }
-        //     // }
-        //     ...prompts
-        //   ]
-        // }
-        ...prompts
-      ],
-      // temperature: 0.7,
+      messages: [...prompts],
+      temperature: 0.7,
       stream: true,
       stream_options: {
         "include_usage": true,
         "include_response_metadata": true
       }
     };
-
-    // const response = await client.chat.completions.create({
-    //   ...defaultOptions,
-    // });
-
-    // console.log('generateCompletionWithImage response:', JSON.stringify(response));
-
-    // return response;
 
     const response = await client.chat.completions.create(defaultOptions);
 

@@ -94,16 +94,16 @@ const search = async (queryObject) => {
     console.log('query', query);
 
     // Ensure query is a string
-    const searchText = String(query).trim();
-    if (!searchText) {
+    if (!query) {
       return getAll({});
     }
 
+    const searchText = String(query).trim();
     const multimodalProcessor = new MultimodalProcessor();
     await multimodalProcessor.init();
 
     // First, check if collection exists and has data
-    const collectionInfo = await multimodalProcessor.milvusClient.describeCollection({
+    const collectionInfo = await multimodalProcessor.describeCollection({
       collection_name: multimodalProcessor.collectionName
     });
 
@@ -113,7 +113,7 @@ const search = async (queryObject) => {
     }
 
     // Search in Milvus with updated parameters
-    const searchResults = await multimodalProcessor.searchProductEmbedding(searchText, 10);
+    const searchResults = await multimodalProcessor.semanticSearch(searchText, 10);
 
     if (!searchResults || !searchResults.length || searchResults.length === 0) {
       logger.warn(`search(): No results found in vector search`);
@@ -131,8 +131,6 @@ const search = async (queryObject) => {
     const items = await Product.find({
       sourceId: { $in: uniqueProductIds }
     });
-
-    console.log('items', items, uniqueProductIds);
 
     if (items.length === 0) {
       logger.warn(`search(): No matching products found in MongoDB`);
@@ -156,6 +154,47 @@ const search = async (queryObject) => {
   }
 };
 
+const ragSearch = async (queryObject) => {
+  try {
+    if (!queryObject) {
+      return getAll({});
+    }
+
+    const { keyword: query } = queryObject;
+    if (!query) {
+      return getAll({});
+    }
+
+    const searchText = String(query).trim();
+    const multimodalProcessor = new MultimodalProcessor();
+    await multimodalProcessor.init();
+    await multimodalProcessor.initializeCollection();
+    const isConnected = await multimodalProcessor.testConnection();
+    if (!isConnected) {
+      logger.warn(`ragSearch(): Failed to connect to Milvus`);
+      return getAll({ keyword: searchText }); // Fallback to regular text search
+    }
+
+    // Perform RAG search
+    const results = await multimodalProcessor.ragSearch(Product, searchText, 2);
+
+    if (!results || results.length === 0) {
+      logger.warn(`ragSearch(): No results found`);
+      return getAll({ keyword: searchText }); // Fallback to regular text search
+    }
+
+    logger.info(`ragSearch(): ${model} searched`, {
+      query: searchText,
+      resultCount: results.length
+    });
+
+    return results;
+  } catch (error) {
+    logger.error(`ragSearch(): Failed to search ${model}`, error);
+    throw new AppError(`Failed to search ${model}`, error.message);
+  }
+};
+
 module.exports = {
   create,
   getAll,
@@ -163,5 +202,6 @@ module.exports = {
   getBySourceId,
   updateById,
   deleteById,
-  search
+  search,
+  ragSearch
 };
