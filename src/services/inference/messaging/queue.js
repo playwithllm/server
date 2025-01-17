@@ -85,7 +85,6 @@ async function initialize() {
             handleStreamChunkEnd
           );
 
-          // await chatResponseStream(prompts);
           await generateCompletionWithImage(prompts);
 
           await mqClient.ack(msg);

@@ -48,6 +48,10 @@ const productSchema = new mongoose.Schema({
   expandedText: {
     type: String,
     required: false,
+  },
+  caption: {
+    type: String,
+    required: false,
   }
 }, {
   timestamps: true,

@@ -140,3 +140,4 @@ docker/volumes/
 
 # migration data
 products.csv
+uploads/

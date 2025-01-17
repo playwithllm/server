@@ -25,9 +25,9 @@ async function populateProducts(multimodalProcessor) {
     const products = await parseProductsCSV('./products-light.csv');
     console.log(`Found ${products.length} products to process`);
 
-    // const oneItemArray = [products[0]];
+    const oneItemArray = [products[0]];
 
-    for (const product of products) {
+    for (const product of oneItemArray) {
       try {
         // Check both MongoDB and vector database
         const existingProduct = await getBySourceId(product.id);
@@ -48,18 +48,20 @@ async function populateProducts(multimodalProcessor) {
 
         // Store embedding in Milvus only if vector doesn't exist
         if (!existingVector.length) {
-          const { expandedText } = await multimodalProcessor.storeProductEmbedding(
+          const { expandedText, caption, IDs } = await multimodalProcessor.storeProductEmbedding(
             product.id,
             product
           );
-          
+
+          console.log('insertResult:', IDs);
+
           // Update MongoDB document with expanded text
           await Product.findOneAndUpdate(
             { sourceId: product.id },
-            { expandedText },
+            { expandedText, caption },
             { new: true }
           );
-          
+
           console.log(`Stored vector embedding and expanded text for product: ${product.id}`);
           await new Promise(resolve => setTimeout(resolve, 1000));
         }
@@ -101,12 +103,19 @@ const run = async () => {
   await multimodalProcessor.init();
   await multimodalProcessor.initializeCollection();
   await multimodalProcessor.testConnection();
-
-  // await resetDatabase(multimodalProcessor);
-
   await populateProducts(multimodalProcessor);
-
-  mongoose.connection.close();
+  await mongoose.connection.close();
 }
 
-module.exports = run;
+const cleanup = async () => {
+  await mongoose.connect('mongodb://localhost:27017/pwllmdb');
+  console.log('Connected to MongoDB');
+  const multimodalProcessor = new MultimodalProcessor();
+  await multimodalProcessor.init();
+  await multimodalProcessor.initializeCollection();
+  await multimodalProcessor.testConnection();
+  await resetDatabase(multimodalProcessor);
+  await mongoose.connection.close();
+}
+
+module.exports = { run, cleanup };

@@ -7,7 +7,10 @@ const os = require('os');
 
 const logger = require('../log/logger');
 
-const vllmClient = require('../../../services/inference/vllm/openai-vllm');
+const MODEL = {
+  INTERN_VL2_5_1B_MPO: 'OpenGVLab/InternVL2_5-1B-MPO',
+  INTERN_VL2_5_1B: 'OpenGVLab/InternVL2_5-1B',
+};
 
 class MultimodalProcessor {
   constructor() {
@@ -18,11 +21,10 @@ class MultimodalProcessor {
     this.storageConfig = {
       baseImagePath: process.env.IMAGE_STORAGE_PATH || path.join(process.cwd(), 'uploads'),
       maxImageSize: 5 * 1024 * 1024, // 5MB
-      allowedFormats: ['jpg', 'jpeg', 'png', 'webp']
+      allowedFormats: ['jpg', 'jpeg', 'png']
     };
 
     this.clipModel = null;
-    this.captionModel = null;
     this.pipeline = null;
     this.embeddingModel = null;
   }
@@ -35,8 +37,6 @@ class MultimodalProcessor {
 
       // Initialize models with smaller, public versions
       this.clipModel = await this.pipeline('feature-extraction', 'Xenova/all-MiniLM-L6-v2');
-      // this.captionModel = await this.pipeline('image-to-text', 'Xenova/vit-gpt2-image-captioning');
-
       // Initialize the embedding model
       this.embeddingModel = await this.pipeline('feature-extraction', 'Xenova/all-MiniLM-L6-v2');
 
@@ -80,25 +80,112 @@ class MultimodalProcessor {
     }
   }
 
-  async generateCaption(imagePath) {
-    if (!this.captionModel) {
-      throw new Error('Models not initialized. Please call init() first.');
+  async convertImageToBase64(imagePath) {
+    try {
+      console.log('convertImageToBase64(): imagePath:', imagePath);
+      const imageBuffer = await sharp(imagePath)
+        .resize(384, 384, {
+          fit: 'contain',
+          background: { r: 255, g: 255, b: 255, alpha: 1 }
+        })
+        .toFormat('jpg')
+        .toBuffer();
+      // convert to base64
+      const base64Data = imageBuffer.toString('base64');
+      return base64Data;
+    } catch (error) {
+      console.error('Error preprocessing image:', error);
+      throw error;
     }
+  }
+
+  async downloadImage(id, imageUrl) {
+    console.log('downloadImage(): imageUrl:', imageUrl);
+
+    await fs.mkdir(this.storageConfig.baseImagePath, { recursive: true });
+
+    const localImagePath = path.join(this.storageConfig.baseImagePath, `${id}.jpg`);
+
+    try {
+      await fs.access(localImagePath);
+      console.log('downloadImage(): image already exists:', localImagePath);
+      return localImagePath;
+    } catch {
+      const response = await axios.get(imageUrl, { responseType: 'arraybuffer' });
+      const imageBuffer = Buffer.from(response.data, 'binary');
+      await fs.writeFile(localImagePath, imageBuffer);
+      return localImagePath;
+    }
+  }
+
+  async generateCompletionSync(prompts) {
+    const response = await axios({
+      method: 'post',
+      url: 'http://192.168.4.28:8000/v1/chat/completions',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      data: {
+        model: MODEL.INTERN_VL2_5_1B_MPO,
+        messages: prompts,
+        // max_completion_tokens: 100,
+        temperature: 0.7,
+        stream: false,
+      },
+    });
+
+    const output = response.data;
+
+    console.log('generateCompletionSync(): output:', output);
+
+    return output;
+  }
+
+
+
+  async generateCaption(id, imagePath) {
+    console.log('generateCaption(): imagePath:', imagePath);
 
     try {
       let localImagePath = imagePath;
 
+      // Handle both URL and local file paths
       if (imagePath.startsWith('http://') || imagePath.startsWith('https://')) {
-        localImagePath = await this.downloadImage(imagePath);
+        console.log('generateCaption(): downloading image...');
+        localImagePath = await this.downloadImage(id, imagePath);
+      } else if (!path.isAbsolute(imagePath)) {
+        // If path is relative, make it absolute
+        localImagePath = path.resolve(process.cwd(), imagePath);
       }
 
-      const output = await this.captionModel(localImagePath);
-
-      if (localImagePath !== imagePath) {
-        await fs.rm(path.dirname(localImagePath), { recursive: true });
+      // Verify file exists
+      try {
+        await fs.access(localImagePath);
+        console.log('generateCaption(): confirmed image exists at:', localImagePath);
+      } catch (error) {
+        throw new Error(`Image file not found at path: ${localImagePath}`);
       }
 
-      return output[0].text;
+      const imageBase64 = await this.convertImageToBase64(localImagePath);
+      console.log('generateCaption(): imageBase64:', imageBase64.length);
+      const prompts = []
+      const prompt = { role: 'user', content: [{ type: 'text', text: 'Generate a caption for the following image:' }] };
+      if (localImagePath) {
+        const img = {
+          type: 'image_url',
+          image_url: {
+            url: `data:image/jpeg;base64,${imageBase64}`
+          }
+        }
+        prompt.content.push(img);
+      };
+
+      prompts.push(prompt);
+
+      const output = await this.generateCompletionSync(prompts);
+      console.log('generateCaption(): image caption:', { caption: output.choices[0].message.content, img: localImagePath });
+
+      return output.choices[0].message.content;
     } catch (error) {
       console.error('Error generating caption:', error);
       throw error;
@@ -108,21 +195,21 @@ class MultimodalProcessor {
   async expandTextWithVLLM(text) {
     console.log('expandTextWithVLLM(): text:', text);
     try {
-      const prompt = `Given the text: "${text}"
-Generate 3-5 closely related terms or phrases that capture similar semantic meaning.
-Only output the terms separated by commas, nothing else.
-For example:
-Input: "dog"
-Output: puppy, canine, pet dog, domestic dog`;
+      const systemPrompt = `You are a precise product title interpreter. Your task is to expand product titles into clear, factual descriptions using only information directly stated or immediately implied in the title. Do not add marketing language, speculation, or features not mentioned. Respond with a single concise sentence.`;
+      const prompt = `Convert this product title into a clear descriptive sentence: "${text}"`;
       console.log('expandTextWithVLLM(): prompt:', prompt);
-      const vllmResponse = await vllmClient.generateCompletion(prompt);
-      const vllmResponseText = vllmResponse.choices[0].message.content;
-      const combinedText = `${text} ${vllmResponseText}`.trim();
-      logger.info(`Expanded "${text}" to: ${combinedText}`);
-      return combinedText;
+
+      const prompts = [{ role: 'system', content: systemPrompt }, { role: 'user', content: prompt }];
+
+      const output = await this.generateCompletionSync(prompts);
+      console.log('expandTextWithVLLM(): output:', output);
+
+      const vllmResponseText = output.choices[0].message.content;
+      console.log(`Expanded "${text}" to: ${vllmResponseText}`);
+      return vllmResponseText;
     } catch (error) {
-      logger.warn('Text expansion failed, using original text:', error);
-      return text;
+      console.error('Error expanding text:', error);
+      throw error;
     }
   }
 
@@ -232,8 +319,18 @@ Output: puppy, canine, pet dog, domestic dog`;
       // Get expanded text for the product name
       const expandedText = await this.expandTextWithVLLM(product.name);
 
+      let caption = '';
+      // Ensure we have a valid image URL/path
+      if (product.images && product.images[0]) {
+        // Generate caption using the full path to the image
+        const imagePath = product.images[0].startsWith('http')
+          ? product.images[0]
+          : path.join(this.storageConfig.baseImagePath, product.images[0]);
+        caption = await this.generateCaption(productId, imagePath);
+      }
+
       // Combine name and expanded text for embedding
-      const textToEmbed = `${product.name} ${expandedText}`.trim();
+      const textToEmbed = `${product.name} ${expandedText} ${caption}`.trim();
       const embedding = await this.getEmbedding(textToEmbed, false);
 
       const insertData = {
@@ -243,19 +340,19 @@ Output: puppy, canine, pet dog, domestic dog`;
           product_name_vector: embedding,
           metadata: {
             productId,
-            name: product.name,
             created_at: new Date().toISOString()
           }
         }]
       };
 
-      await this.milvusClient.insert(insertData);
+      const { IDs } = await this.milvusClient.insert(insertData);
+      console.log('storeProductEmbedding(): IDs:', IDs);
       await this.milvusClient.flush({
         collection_names: [this.collectionName]
       });
 
       // Return expanded text so it can be saved in MongoDB
-      return { embedding, expandedText };
+      return { embedding, expandedText, caption, IDs };
     } catch (error) {
       logger.error(`Error storing product embedding for ${productId}:`, error);
       throw error;
@@ -497,12 +594,12 @@ User question: "${userQuery}"`);
   async ragSearch(Product, query, limit = 5) {
     try {
       // Get semantic meaning of the query
-//       const semanticQuery = await vllmClient.generateCompletion(`
-// Convert this user question into a search-optimized query. 
-// Keep only the essential search terms.
-// User question: "${query}"`);
+      //       const semanticQuery = await vllmClient.generateCompletion(`
+      // Convert this user question into a search-optimized query. 
+      // Keep only the essential search terms.
+      // User question: "${query}"`);
 
-//       const semanticQueryText = semanticQuery.choices[0].message.content;
+      //       const semanticQueryText = semanticQuery.choices[0].message.content;
 
       // Search in Milvus
       const searchResults = await this.searchProductEmbedding(query, limit);
