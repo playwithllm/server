@@ -10,7 +10,8 @@ const {
   getAll,
   getById,
   search,
-  ragSearch
+  ragSearch,
+  searchByImage
 } = require('./service');
 
 const {
@@ -31,8 +32,9 @@ const routes = async () => {
   await processor.init();
   logger.info(`Setting up routes for ${model}`);
 
-  // Configure multer for image uploads
+  // Configure multer for image uploads - store in memory
   const upload = multer({
+    storage: multer.memoryStorage(),
     limits: {
       fileSize: 5 * 1024 * 1024 // 5MB
     },
@@ -93,14 +95,16 @@ const routes = async () => {
   // Search by image
   router.post('/search/image', upload.single('image'), async (req, res) => {
     try {
-      const results = await processor.search(
-        req.file.buffer,
-        'image',
-        ['image_vector'],
-        req.query.limit || 10
-      );
-      res.json(results);
+      if (!req.file) {
+        throw new Error('No image file provided');
+      }
+      
+      console.log('searchByImage(): req.file:', req.file);
+      const products = await searchByImage(req.file.buffer, req.query.limit || 5);
+      console.log('searchByImage(): products:', products);
+      res.json(products);
     } catch (error) {
+      console.error('Error searching by image:', error);
       res.status(500).json({ error: error.message });
     }
   });

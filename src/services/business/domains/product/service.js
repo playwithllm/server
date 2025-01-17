@@ -195,6 +195,39 @@ const ragSearch = async (queryObject) => {
   }
 };
 
+const searchByImage = async (imageBuffer, limit = 5) => {
+  try {
+    const multimodalProcessor = new MultimodalProcessor();
+    await multimodalProcessor.init();
+    await multimodalProcessor.initializeCollection();
+
+    // Get similar products from Milvus
+    const searchResults = await multimodalProcessor.searchByImageBuffer(imageBuffer, limit);
+    
+    if (!searchResults || searchResults.length === 0) {
+      logger.warn('searchByImage(): No results found in vector search');
+      return [];
+    }
+
+    // Extract unique product IDs
+    const productIds = [...new Set(searchResults.map(result => result.productId))];
+
+    // Fetch full product details from MongoDB
+    const products = await Product.find({ sourceId: { $in: productIds } });
+
+    // Sort products by search score
+    const sortedProducts = productIds
+      .map(id => products.find(product => product.sourceId === id))
+      .filter(Boolean); // Remove any null values
+
+    logger.info(`searchByImage(): Found ${sortedProducts.length} products`);
+    return sortedProducts;
+  } catch (error) {
+    logger.error('searchByImage(): Failed to search products by image', error);
+    throw new AppError('Failed to search products by image', error.message);
+  }
+};
+
 module.exports = {
   create,
   getAll,
@@ -203,5 +236,6 @@ module.exports = {
   updateById,
   deleteById,
   search,
-  ragSearch
+  ragSearch,
+  searchByImage
 };

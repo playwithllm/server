@@ -119,6 +119,7 @@ class MultimodalProcessor {
   }
 
   async generateCompletionSync(prompts) {
+    console.log('generateCompletionSync(): prompts:', prompts);
     const response = await axios({
       method: 'post',
       url: 'http://192.168.4.28:8000/v1/chat/completions',
@@ -247,7 +248,6 @@ class MultimodalProcessor {
 
   async initializeCollection() {
     try {
-      // First check if collection exists
       const collections = await this.milvusClient.listCollections();
       console.log('Existing collections:', collections);
 
@@ -258,14 +258,11 @@ class MultimodalProcessor {
         await this.milvusClient.loadCollection({
           collection_name: this.collectionName
         });
-
-        // Get and log current collection statistics
         const stats = await this.getCollectionStats();
         console.log('Collection loaded with stats:', stats);
         return true;
       }
 
-      // Only create new collection if it doesn't exist
       console.log(`Creating new collection: ${this.collectionName}`);
       const dimensionSize = 384; // MiniLM-L6-v2 embedding dimension
 
@@ -286,6 +283,12 @@ class MultimodalProcessor {
             dim: dimensionSize
           },
           {
+            name: 'image_vector',
+            description: 'Image embedding vector',
+            data_type: 'FloatVector',
+            dim: dimensionSize
+          },
+          {
             name: 'metadata',
             description: 'Metadata field',
             data_type: 'JSON'
@@ -293,14 +296,23 @@ class MultimodalProcessor {
         ]
       });
 
-      console.log('Creating index...');
-      await this.milvusClient.createIndex({
-        collection_name: this.collectionName,
-        field_name: 'product_name_vector',
-        index_type: 'IVF_FLAT',
-        metric_type: 'COSINE',
-        params: { nlist: 1024 }
-      });
+      // Create indices for both vector fields
+      await Promise.all([
+        this.milvusClient.createIndex({
+          collection_name: this.collectionName,
+          field_name: 'product_name_vector',
+          index_type: 'IVF_FLAT',
+          metric_type: 'COSINE',
+          params: { nlist: 1024 }
+        }),
+        this.milvusClient.createIndex({
+          collection_name: this.collectionName,
+          field_name: 'image_vector',
+          index_type: 'IVF_FLAT',
+          metric_type: 'COSINE',
+          params: { nlist: 1024 }
+        })
+      ]);
 
       await this.milvusClient.loadCollection({
         collection_name: this.collectionName
@@ -314,30 +326,59 @@ class MultimodalProcessor {
     }
   }
 
+  async getImageEmbedding(imagePath) {
+    try {
+      if (!this.clipModel) {
+        throw new Error('CLIP model not initialized. Please call init() first.');
+      }
+
+      // Convert image to base64
+      const imageBase64 = await this.convertImageToBase64(imagePath);
+
+      // Get image embedding using CLIP model
+      const output = await this.clipModel(`data:image/jpeg;base64,${imageBase64}`, {
+        pooling: 'mean',
+        normalize: true
+      });
+
+      return Array.from(output.data);
+    } catch (error) {
+      logger.error('Error getting image embedding:', error);
+      throw error;
+    }
+  }
+
   async storeProductEmbedding(productId, product) {
     try {
       // Get expanded text for the product name
       const expandedText = await this.expandTextWithVLLM(product.name);
 
       let caption = '';
-      // Ensure we have a valid image URL/path
+      let imageEmbedding = null;
+
+      // Handle image processing if available
       if (product.images && product.images[0]) {
-        // Generate caption using the full path to the image
         const imagePath = product.images[0].startsWith('http')
-          ? product.images[0]
+          ? await this.downloadImage(productId, product.images[0])
           : path.join(this.storageConfig.baseImagePath, product.images[0]);
-        caption = await this.generateCaption(productId, imagePath);
+
+        // Generate caption and image embedding in parallel
+        [caption, imageEmbedding] = await Promise.all([
+          this.generateCaption(productId, imagePath),
+          this.getImageEmbedding(imagePath)
+        ]);
       }
 
       // Combine name and expanded text for embedding
       const textToEmbed = `${product.name} ${expandedText} ${caption}`.trim();
-      const embedding = await this.getEmbedding(textToEmbed, false);
+      const textEmbedding = await this.getEmbedding(textToEmbed, false);
 
       const insertData = {
         collection_name: this.collectionName,
         fields_data: [{
           id: parseInt(Date.now().toString() + Math.floor(Math.random() * 1000)),
-          product_name_vector: embedding,
+          product_name_vector: textEmbedding,
+          image_vector: imageEmbedding || new Array(384).fill(0), // Use zero vector if no image
           metadata: {
             productId,
             created_at: new Date().toISOString()
@@ -346,13 +387,11 @@ class MultimodalProcessor {
       };
 
       const { IDs } = await this.milvusClient.insert(insertData);
-      console.log('storeProductEmbedding(): IDs:', IDs);
       await this.milvusClient.flush({
         collection_names: [this.collectionName]
       });
 
-      // Return expanded text so it can be saved in MongoDB
-      return { embedding, expandedText, caption, IDs };
+      return { textEmbedding, imageEmbedding, expandedText, caption, IDs };
     } catch (error) {
       logger.error(`Error storing product embedding for ${productId}:`, error);
       throw error;
@@ -619,7 +658,11 @@ Name: ${p.name}
 Description: ${p.aboutProduct}
 Price: ${p.price}
 Category: ${p.category}
+Caption: ${p.caption}
+Expanded Text: ${p.expandedText}
 `).join('\n---\n');
+
+      const systemPrompt = `You are a helpful assistant that can search for products based on user queries.`;
 
       // Generate LLM prompt
       const prompt = `User Query: "${query}"
@@ -629,10 +672,21 @@ ${context}
 
 Based on the user's query, analyze these products and return ONLY the product IDs that best match the query.
 Format your response as a comma-separated list of product IDs, nothing else.
-Example response format: "123, 456, 789"`;
+Example response format: ["123", "456", "789"]`;
+
+      const prompts = [
+        {
+          role: 'system',
+          content: systemPrompt
+        },
+        {
+          role: 'user',
+          content: prompt
+        }
+      ]
 
       // Get LLM response
-      const llmResponse = await vllmClient.generateCompletion(prompt);
+      const llmResponse = await this.generateCompletionSync(prompts);
 
       console.log('ragSearch(): LLM response:', llmResponse.choices[0].message);
 
@@ -641,6 +695,8 @@ Example response format: "123, 456, 789"`;
         .split(',')
         .map(id => id.trim())
         .filter(Boolean);
+
+      console.log('ragSearch(): recommendedIds:', recommendedIds);
 
       // Fetch final products in order of recommendation
       const finalProducts = await Product.find({
@@ -655,6 +711,99 @@ Example response format: "123, 456, 789"`;
       return sortedProducts;
     } catch (error) {
       logger.error('Error in RAG search:', error);
+      throw error;
+    }
+  }
+
+  async searchByImage(imagePath, limit = 5) {
+    try {
+      const imageEmbedding = await this.getImageEmbedding(imagePath);
+
+      const searchResults = await this.milvusClient.search({
+        collection_name: this.collectionName,
+        vector: imageEmbedding,
+        field_name: 'image_vector',
+        limit: limit,
+        params: { nprobe: 16 },
+        output_fields: ['metadata']
+      });
+
+      const processedResults = searchResults.results.map(result => ({
+        productId: result.metadata.productId,
+        score: result.score,
+        metadata: result.metadata
+      }));
+
+      console.log('searchByImage(): processedResults:', processedResults);
+
+      return processedResults;
+    } catch (error) {
+      logger.error('Error searching by image:', error);
+      throw error;
+    }
+  }
+
+  async convertBufferToBase64(imageBuffer) {
+    try {
+      const processedBuffer = await sharp(imageBuffer)
+        .resize(384, 384, {
+          fit: 'contain',
+          background: { r: 255, g: 255, b: 255, alpha: 1 }
+        })
+        .toFormat('jpg')
+        .toBuffer();
+
+      return processedBuffer.toString('base64');
+    } catch (error) {
+      console.error('Error preprocessing image buffer:', error);
+      throw error;
+    }
+  }
+
+  async getImageEmbeddingFromBuffer(imageBuffer) {
+    try {
+      if (!this.clipModel) {
+        throw new Error('CLIP model not initialized. Please call init() first.');
+      }
+
+      // Convert buffer to base64
+      const imageBase64 = await this.convertBufferToBase64(imageBuffer);
+
+      // Get image embedding using CLIP model
+      const output = await this.clipModel(`data:image/jpeg;base64,${imageBase64}`, {
+        pooling: 'mean',
+        normalize: true
+      });
+
+      return Array.from(output.data);
+    } catch (error) {
+      logger.error('Error getting image embedding from buffer:', error);
+      throw error;
+    }
+  }
+
+  async searchByImageBuffer(imageBuffer, limit = 5) {
+    try {
+      const imageEmbedding = await this.getImageEmbeddingFromBuffer(imageBuffer);
+
+      const searchResults = await this.milvusClient.search({
+        collection_name: this.collectionName,
+        vector: imageEmbedding,
+        field_name: 'image_vector',
+        limit: limit,
+        params: { nprobe: 16 },
+        output_fields: ['metadata']
+      });
+
+      const processedResults = searchResults.results.map(result => ({
+        productId: result.metadata.productId,
+        score: result.score,
+        metadata: result.metadata
+      }));
+
+      return processedResults;
+    } catch (error) {
+      logger.error('Error searching by image buffer:', error);
       throw error;
     }
   }

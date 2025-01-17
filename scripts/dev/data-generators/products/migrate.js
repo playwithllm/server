@@ -25,9 +25,9 @@ async function populateProducts(multimodalProcessor) {
     const products = await parseProductsCSV('./products-light.csv');
     console.log(`Found ${products.length} products to process`);
 
-    const oneItemArray = [products[0]];
+    // const oneItemArray = [products[0]];
 
-    for (const product of oneItemArray) {
+    for (const product of products) {
       try {
         // Check both MongoDB and vector database
         const existingProduct = await getBySourceId(product.id);
