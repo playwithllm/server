@@ -36,7 +36,9 @@ const getAll = async (query) => {
       ];
     }
 
-    const items = await Product.find(filter);
+    // pick 20 even though it says getAll    
+
+    const items = await Product.find(filter).limit(20);
     logger.info(`getAll(): ${model} fetched`, { count: items.length });
     return items;
   } catch (error) {
@@ -201,27 +203,24 @@ const searchByImage = async (imageBuffer, limit = 5) => {
     await multimodalProcessor.init();
     await multimodalProcessor.initializeCollection();
 
-    // Get similar products from Milvus
-    const searchResults = await multimodalProcessor.searchByImageBuffer(imageBuffer, limit);
-    
+    // Use the new enhanced image search
+     const searchResults = await multimodalProcessor.enhancedImageSearch(Product, imageBuffer, limit);
+    // const searchResults = await multimodalProcessor.searchByImageBuffer(imageBuffer, limit);
+
     if (!searchResults || searchResults.length === 0) {
-      logger.warn('searchByImage(): No results found in vector search');
+      logger.warn('searchByImage(): No results found in enhanced image search');
       return [];
     }
 
-    // Extract unique product IDs
-    const productIds = [...new Set(searchResults.map(result => result.productId))];
+    logger.info(`searchByImage(): Found ${searchResults.length} products with scores`, {
+      results: searchResults.map(product => ({
+        id: product.sourceId,
+        name: product.name,
+        scores: product.searchScores
+      }))
+    });
 
-    // Fetch full product details from MongoDB
-    const products = await Product.find({ sourceId: { $in: productIds } });
-
-    // Sort products by search score
-    const sortedProducts = productIds
-      .map(id => products.find(product => product.sourceId === id))
-      .filter(Boolean); // Remove any null values
-
-    logger.info(`searchByImage(): Found ${sortedProducts.length} products`);
-    return sortedProducts;
+    return searchResults;
   } catch (error) {
     logger.error('searchByImage(): Failed to search products by image', error);
     throw new AppError('Failed to search products by image', error.message);

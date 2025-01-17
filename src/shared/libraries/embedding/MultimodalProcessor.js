@@ -144,7 +144,7 @@ class MultimodalProcessor {
 
 
 
-  async generateCaption(id, imagePath) {
+  async generateCaption(id, imagePath, productName) {
     console.log('generateCaption(): imagePath:', imagePath);
 
     try {
@@ -170,7 +170,7 @@ class MultimodalProcessor {
       const imageBase64 = await this.convertImageToBase64(localImagePath);
       console.log('generateCaption(): imageBase64:', imageBase64.length);
       const prompts = []
-      const prompt = { role: 'user', content: [{ type: 'text', text: 'Generate a caption for the following image:' }] };
+      const prompt = { role: 'user', content: [{ type: 'text', text: `Generate a caption for the following image titled: ${productName}` }] };
       if (localImagePath) {
         const img = {
           type: 'image_url',
@@ -196,7 +196,7 @@ class MultimodalProcessor {
   async expandTextWithVLLM(text) {
     console.log('expandTextWithVLLM(): text:', text);
     try {
-      const systemPrompt = `You are a precise product title interpreter. Your task is to expand product titles into clear, factual descriptions using only information directly stated or immediately implied in the title. Do not add marketing language, speculation, or features not mentioned. Respond with a single concise sentence.`;
+      const systemPrompt = `You are a precise product title interpreter. Your task is to expand product titles into clear, factual descriptions using only information directly stated or immediately implied in the title. Do not add marketing language, speculation, or features not mentioned. Respond with a single elaborated sentence.`;
       const prompt = `Convert this product title into a clear descriptive sentence: "${text}"`;
       console.log('expandTextWithVLLM(): prompt:', prompt);
 
@@ -214,7 +214,7 @@ class MultimodalProcessor {
     }
   }
 
-  async getEmbedding(text, useExpansion = true) {
+  async getEmbedding(text, useExpansion = false) {
     try {
       if (!this.embeddingModel) {
         throw new Error('Embedding model not initialized. Please call init() first.');
@@ -480,9 +480,9 @@ class MultimodalProcessor {
     try {
       console.log('searchProductEmbedding(): searchText:', searchText);
       // For search queries, we want to be more aggressive with expansion
-      const expandedQuery = await this.expandTextWithVLLM(searchText);
-      console.log('searchProductEmbedding(): expandedQuery:', expandedQuery);
-      const queryVector = await this.getEmbedding(expandedQuery, false); // false because text is already expanded
+      // const expandedQuery = await this.expandTextWithVLLM(searchText);
+      // console.log('searchProductEmbedding(): expandedQuery:', expandedQuery);
+      const queryVector = await this.getEmbedding(searchText);
       const searchResults = await this.milvusClient.search({
         collection_name: this.collectionName,
         vector: queryVector,
@@ -492,11 +492,12 @@ class MultimodalProcessor {
         output_fields: ['metadata']
       });
 
+      console.log('searchProductEmbedding(): searchResults:', searchResults);
+
       // Process and rank results considering semantic similarity
       const processedData = searchResults.results
         .map(result => ({
           productId: result.metadata.productId,
-          name: result.metadata.name,
           score: result.score,
           created_at: result.metadata.created_at
         }))
@@ -632,14 +633,6 @@ User question: "${userQuery}"`);
 
   async ragSearch(Product, query, limit = 5) {
     try {
-      // Get semantic meaning of the query
-      //       const semanticQuery = await vllmClient.generateCompletion(`
-      // Convert this user question into a search-optimized query. 
-      // Keep only the essential search terms.
-      // User question: "${query}"`);
-
-      //       const semanticQueryText = semanticQuery.choices[0].message.content;
-
       // Search in Milvus
       const searchResults = await this.searchProductEmbedding(query, limit);
 
@@ -784,6 +777,7 @@ Example response format: ["123", "456", "789"]`;
 
   async searchByImageBuffer(imageBuffer, limit = 5) {
     try {
+      console.log('searchByImageBuffer(): imageBuffer:', imageBuffer);
       const imageEmbedding = await this.getImageEmbeddingFromBuffer(imageBuffer);
 
       const searchResults = await this.milvusClient.search({
@@ -807,6 +801,194 @@ Example response format: ["123", "456", "789"]`;
       throw error;
     }
   }
+
+  async generateDetailedImageAnalysis(imageInput, productName) {
+    try {
+      let imageBase64;
+      if (Buffer.isBuffer(imageInput)) {
+        imageBase64 = await this.convertBufferToBase64(imageInput);
+      } else {
+        // Assuming imageInput is a path if not a buffer
+        imageBase64 = await this.convertImageToBase64(imageInput);
+      }
+
+      const analysisPrompt = {
+        role: 'user',
+        content: [
+          {
+            type: 'text',
+            text: `Analyze this product (titled: ${productName}) image in detail and provide:
+1. Classify the product type
+2. Main color
+`
+          },
+          {
+            type: 'image_url',
+            image_url: {
+              url: `data:image/jpeg;base64,${imageBase64}`
+            }
+          }
+        ]
+      };
+
+      const response = await this.generateCompletionSync([analysisPrompt]);
+      let analysis;
+      try {
+        analysis = response.choices[0].message.content;
+      } catch (e) {
+        // If JSON parsing fails, use the raw response
+        console.log('generateDetailedImageAnalysis(): error:', e);
+      }
+
+      console.log('generateDetailedImageAnalysis(): analysis:', analysis);
+
+      return analysis;
+    } catch (error) {
+      console.error('Error generating detailed image analysis:', error);
+      throw error;
+    }
+  }
+
+  async searchByImageEmbedding(imageInput, limit = 5) {
+    try {
+      console.log('searchByImageEmbedding(): imageInput:', imageInput);
+      let imageEmbedding;
+      if (Buffer.isBuffer(imageInput)) {
+        imageEmbedding = await this.getImageEmbeddingFromBuffer(imageInput);
+      } else {
+        imageEmbedding = await this.getImageEmbedding(imageInput);
+      }
+
+      const searchResults = await this.milvusClient.search({
+        collection_name: this.collectionName,
+        vector: imageEmbedding,
+        field_name: 'image_vector',
+        limit: limit * 2, // Get more results initially for better filtering
+        params: { nprobe: 16 },
+        output_fields: ['metadata']
+      });
+
+      return searchResults.results.map(result => ({
+        productId: result.metadata.productId,
+        score: result.score,
+        metadata: result.metadata,
+        matchType: 'visual'
+      }));
+    } catch (error) {
+      console.error('Error in image embedding search:', error);
+      throw error;
+    }
+  }
+
+  calculateColorSimilarity(color1, color2) {
+    // Convert color names to a simple similarity score
+    // This is a basic implementation - could be enhanced with actual color space calculations
+    if (color1.toLowerCase() === color2.toLowerCase()) return 1.0;
+
+    // Check for color family matches (e.g., "dark blue" and "navy")
+    const color1Words = color1.toLowerCase().split(' ');
+    const color2Words = color2.toLowerCase().split(' ');
+    const commonColors = color1Words.filter(c => color2Words.includes(c));
+
+    return commonColors.length > 0 ? 0.5 : 0;
+  }
+
+  calculateFeatureMatch(analysis1, analysis2) {
+    let score = 0;
+    const weights = {
+      productType: 0.3,
+      style: 0.2,
+      material: 0.2,
+      pattern: 0.15,
+      brand: 0.15
+    };
+
+    // Compare product type
+    if (analysis1.productType?.toLowerCase() === analysis2.productType?.toLowerCase()) {
+      score += weights.productType;
+    }
+
+    // Compare style
+    if (analysis1.style?.toLowerCase() === analysis2.style?.toLowerCase()) {
+      score += weights.style;
+    }
+
+    // Compare material
+    if (analysis1.material?.toLowerCase() === analysis2.material?.toLowerCase()) {
+      score += weights.material;
+    }
+
+    // Compare patterns
+    if (analysis1.pattern?.toLowerCase() === analysis2.pattern?.toLowerCase()) {
+      score += weights.pattern;
+    }
+
+    // Compare brand
+    if (analysis1.brand?.toLowerCase() === analysis2.brand?.toLowerCase()) {
+      score += weights.brand;
+    }
+
+    return score;
+  }
+
+
+  async enhancedImageSearch(Product, imageInput, limit = 5) {
+    try {
+      // 1. Generate detailed analysis of the search image
+      const searchImageAnalysis = await this.generateDetailedImageAnalysis(imageInput);
+
+      console.log('enhancedImageSearch(): searchImageAnalysis:', searchImageAnalysis);
+
+      // 2. Perform parallel searches
+      const [visualResults, semanticResults] = await Promise.all([
+        this.searchByImageBuffer(imageInput, limit),
+        this.ragSearch(
+          Product,
+          JSON.stringify(searchImageAnalysis),
+          limit
+        )
+      ]);
+
+      // 3. Merge and rank results
+      const combinedResults = [...visualResults, ...semanticResults];
+
+      // 4. Get full product details for top results
+      const topProductIds = combinedResults
+        .slice(0, limit)
+        .map(result => result.productId);
+
+      const products = await Product.find({
+        sourceId: { $in: topProductIds }
+      });
+
+      // 5. Add search scores to product results
+      const enhancedProducts = products.map(product => {
+        const searchResult = combinedResults.find(
+          r => r.productId === product.sourceId
+        );
+        return {
+          ...product.toObject(),
+          searchScores: {
+            visualScore: searchResult.visualScore,
+            semanticScore: searchResult.semanticScore,
+            featureScore: searchResult.featureScore,
+            totalScore: searchResult.totalScore
+          }
+        };
+      });
+
+      // Sort by total score
+      enhancedProducts.sort((a, b) =>
+        b.searchScores.totalScore - a.searchScores.totalScore
+      );
+
+      return enhancedProducts;
+    } catch (error) {
+      console.error('Error in enhanced image search:', error);
+      throw error;
+    }
+  }
+
 }
 
 module.exports = MultimodalProcessor;

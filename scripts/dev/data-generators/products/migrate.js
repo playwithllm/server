@@ -18,16 +18,47 @@ const resetDatabase = async (multimodalProcessor) => {
   console.log('Current products:', savedProducts);
 }
 
+async function processProductImage(multimodalProcessor, product) {
+  try {
+    if (!product.images || !product.images[0]) {
+      return { imageAnalysis: null, imageEmbedding: null };
+    }
+
+    const imagePath = product.images[0].startsWith('http')
+      ? await multimodalProcessor.downloadImage(product.id, product.images[0])
+      : path.join(multimodalProcessor.storageConfig.baseImagePath, product.images[0]);
+
+    // Generate both caption and detailed analysis
+    const [basicCaption, detailedAnalysis, imageEmbedding] = await Promise.all([
+      multimodalProcessor.generateCaption(product.id, imagePath, product.name),
+      multimodalProcessor.generateDetailedImageAnalysis(imagePath, product.name),
+      multimodalProcessor.getImageEmbedding(imagePath)
+    ]);
+
+    // Combine basic caption with detailed analysis
+    const imageAnalysis = {
+      basicCaption,
+      detailedAnalysis,
+      imagePath
+    };
+
+    return { imageAnalysis, imageEmbedding };
+  } catch (error) {
+    console.error(`Error processing image for product ${product.id}:`, error);
+    return { imageAnalysis: null, imageEmbedding: null };
+  }
+}
+
 async function populateProducts(multimodalProcessor) {
   try {
     console.log('Populating products...');
 
-    const products = await parseProductsCSV('./products-light.csv');
+    const products = await parseProductsCSV('./products.csv');
     console.log(`Found ${products.length} products to process`);
 
-    // const oneItemArray = [products[0]];
+    const customItemArray = products.slice(0, 10);
 
-    for (const product of products) {
+    for (const product of customItemArray) {
       try {
         // Check both MongoDB and vector database
         const existingProduct = await getBySourceId(product.id);
@@ -40,33 +71,63 @@ async function populateProducts(multimodalProcessor) {
 
         console.log(`Processing product: ${product.id} - ${product.name}`);
 
-        // Create product in MongoDB if it doesn't exist
+        // Process image and get analysis
+        const { imageAnalysis, imageEmbedding } = await processProductImage(multimodalProcessor, product);
+
+        // Get expanded text description
+        const expandedText = await multimodalProcessor.expandTextWithVLLM(product.name);
+
+        console.log('imageAnalysis:', { imageAnalysis, expandedText });
+
+        // Create or update MongoDB document
         if (!existingProduct) {
-          const result = await create(product);
+          const mongoProduct = {
+            ...product,
+            expandedText,
+            caption: `${imageAnalysis?.basicCaption} ${imageAnalysis?.detailedAnalysis}`
+          };
+          const result = await create(mongoProduct);
           console.log(`Created MongoDB document with ID: ${result._id}`);
         }
 
-        // Store embedding in Milvus only if vector doesn't exist
-        if (!existingVector.length) {
-          const { expandedText, caption, IDs } = await multimodalProcessor.storeProductEmbedding(
-            product.id,
-            product
-          );
+        // Store vector embedding if it doesn't exist
+        if (!existingVector.length && imageEmbedding) {
+          // Combine product name, expanded text, and image analysis for text embedding
+          const textToEmbed = [
+            product.name,
+            // expandedText,
+            imageAnalysis?.basicCaption,
+            imageAnalysis?.detailedAnalysis,
+          ].filter(Boolean).join(' ');
 
-          console.log('insertResult:', IDs);
+          console.log('textToEmbed:', textToEmbed);
 
-          // Update MongoDB document with expanded text
-          await Product.findOneAndUpdate(
-            { sourceId: product.id },
-            { expandedText, caption },
-            { new: true }
-          );
+          const textEmbedding = await multimodalProcessor.getEmbedding(textToEmbed, false);
 
-          console.log(`Stored vector embedding and expanded text for product: ${product.id}`);
-          await new Promise(resolve => setTimeout(resolve, 1000));
+          // Insert into Milvus with enhanced metadata
+          const insertData = {
+            collection_name: multimodalProcessor.collectionName,
+            fields_data: [{
+              id: parseInt(Date.now().toString() + Math.floor(Math.random() * 1000)),
+              product_name_vector: textEmbedding,
+              image_vector: imageEmbedding,
+              metadata: {
+                productId: product.id,
+                // name: product.name,
+                // imagePath: imageAnalysis?.imagePath,
+                // imageAnalysis: imageAnalysis,
+                created_at: new Date().toISOString()
+              }
+            }]
+          };
+
+          const { IDs } = await multimodalProcessor.milvusClient.insert(insertData);
+          await multimodalProcessor.milvusClient.flush({
+            collection_names: [multimodalProcessor.collectionName]
+          });
+
+          console.log(`Stored vector embedding for product: ${product.id}, IDs:`, IDs);
         }
-
-
 
         // Add a small delay between operations
         await new Promise(resolve => setTimeout(resolve, 1000));
