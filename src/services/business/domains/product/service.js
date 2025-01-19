@@ -181,7 +181,7 @@ const ragSearch = async (queryObject) => {
     }
 
     // Perform RAG search
-    const results = await multimodalProcessor.ragSearch(Product, searchText, 2);
+    const results = await multimodalProcessor.ragSearch(Product, searchText, 10);
 
     if (!results || results.length === 0) {
       logger.warn(`ragSearch(): No results found`);
@@ -200,7 +200,7 @@ const ragSearch = async (queryObject) => {
   }
 };
 
-const searchByImage = async (imageBuffer, limit = 5) => {
+const searchByImage = async (imageBuffer, limit = 10) => {
   try {
     const multimodalProcessor = new MultimodalProcessor();
     await multimodalProcessor.init();

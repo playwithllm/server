@@ -631,7 +631,7 @@ User question: "${userQuery}"`);
     }
   }
 
-  async ragSearch(Product, query, limit = 5) {
+  async ragSearch(Product, query, limit = 10) {
     try {
       // Search in Milvus
       const searchResults = await this.searchProductEmbedding(query, limit);
@@ -643,55 +643,55 @@ User question: "${userQuery}"`);
 
       console.log('ragSearch(): productIds:', productIds);
 
-//       // Fetch full product details from MongoDB
-//       const products = await Product.find({ sourceId: { $in: productIds } });
+      //       // Fetch full product details from MongoDB
+      //       const products = await Product.find({ sourceId: { $in: productIds } });
 
-//       // Prepare context for LLM
-//       const context = products.map(p => `
-// Product ID: ${p.sourceId} \n
-// Name: ${p.name} \n
-// Category: ${p.category} \n
-// `).join('\n---\n');
+      //       // Prepare context for LLM
+      //       const context = products.map(p => `
+      // Product ID: ${p.sourceId} \n
+      // Name: ${p.name} \n
+      // Category: ${p.category} \n
+      // `).join('\n---\n');
 
-//       const systemPrompt = `You are a helpful assistant that searches for products based on user queries. Your task is to analyze the user's query and find the most relevant products from the provided list. Prioritize products that are semantically similar to the query. Match on product type, category, or context, not just keywords. For example: 
-      
-//   - If the query mentions clothing-related terms like 'dress' or 'outfit,' prioritize products such as costumes, apparel, or accessories over unrelated items.
-//   - If the query mentions electronics, match devices, gadgets, or components that fit the context.
-//   - Always aim to identify the product(s) that best align with the intent of the query, even if the exact words do not match. Use all available product information, including names, descriptions, and image captions, to determine relevance.`;
+      //       const systemPrompt = `You are a helpful assistant that searches for products based on user queries. Your task is to analyze the user's query and find the most relevant products from the provided list. Prioritize products that are semantically similar to the query. Match on product type, category, or context, not just keywords. For example: 
 
-//       // Generate LLM prompt
-//       const prompt = `User Query: "${query}"
+      //   - If the query mentions clothing-related terms like 'dress' or 'outfit,' prioritize products such as costumes, apparel, or accessories over unrelated items.
+      //   - If the query mentions electronics, match devices, gadgets, or components that fit the context.
+      //   - Always aim to identify the product(s) that best align with the intent of the query, even if the exact words do not match. Use all available product information, including names, descriptions, and image captions, to determine relevance.`;
 
-// Available Products:
-// ${context}
+      //       // Generate LLM prompt
+      //       const prompt = `User Query: "${query}"
 
-// Based on the user's query, analyze these products and return ONLY the product IDs that best match the query.
-// Format your response as a comma-separated list of product IDs, nothing else.
-// Example response format: ["123", "456", "789"]`;
+      // Available Products:
+      // ${context}
 
-//       const prompts = [
-//         {
-//           role: 'system',
-//           content: systemPrompt
-//         },
-//         {
-//           role: 'user',
-//           content: prompt
-//         }
-//       ]
+      // Based on the user's query, analyze these products and return ONLY the product IDs that best match the query.
+      // Format your response as a comma-separated list of product IDs, nothing else.
+      // Example response format: ["123", "456", "789"]`;
 
-//       // Get LLM response
-//       const llmResponse = await this.generateCompletionSync(prompts);
+      //       const prompts = [
+      //         {
+      //           role: 'system',
+      //           content: systemPrompt
+      //         },
+      //         {
+      //           role: 'user',
+      //           content: prompt
+      //         }
+      //       ]
 
-//       console.log('ragSearch(): LLM response:', llmResponse.choices[0].message);
+      //       // Get LLM response
+      //       const llmResponse = await this.generateCompletionSync(prompts);
 
-//       // Extract product IDs from LLM response
-//       const recommendedIds = llmResponse.choices[0].message.content
-//         .split(',')
-//         .map(id => id.trim())
-//         .filter(Boolean);
+      //       console.log('ragSearch(): LLM response:', llmResponse.choices[0].message);
 
-//       console.log('ragSearch(): recommendedIds:', recommendedIds);
+      //       // Extract product IDs from LLM response
+      //       const recommendedIds = llmResponse.choices[0].message.content
+      //         .split(',')
+      //         .map(id => id.trim())
+      //         .filter(Boolean);
+
+      //       console.log('ragSearch(): recommendedIds:', recommendedIds);
 
       // Fetch final products in order of recommendation
       const finalProducts = await Product.find({
@@ -731,7 +731,7 @@ User question: "${userQuery}"`);
         metadata: result.metadata
       }));
 
-      console.log('searchByImage(): processedResults:', processedResults);
+      console.log('searchByImage(): processedResults:', processedResults.length);
 
       return processedResults;
     } catch (error) {
@@ -779,7 +779,7 @@ User question: "${userQuery}"`);
     }
   }
 
-  async searchByImageBuffer(imageBuffer, limit = 5) {
+  async searchByImageBuffer(imageBuffer, limit = 10) {
     try {
       console.log('searchByImageBuffer(): imageBuffer:', imageBuffer);
       const imageEmbedding = await this.getImageEmbeddingFromBuffer(imageBuffer);
@@ -821,10 +821,7 @@ User question: "${userQuery}"`);
         content: [
           {
             type: 'text',
-            text: `Analyze this product (titled: ${productName}) image in detail and provide:
-1. Classify the product type
-2. Main color
-`
+            text: `Analyze the provided product image and extract key visual features to describe it as if it were a user search query. Create a concise, two-to-five-word phrase that captures the most relevant attributes, such as color, category, purpose, or unique features of the product. The generated phrase should mimic how a user might search for this product.`
           },
           {
             type: 'image_url',
@@ -936,7 +933,7 @@ User question: "${userQuery}"`);
   }
 
 
-  async enhancedImageSearch(Product, imageInput, limit = 5) {
+  async enhancedImageSearch(Product, imageInput, limit = 10) {
     try {
       // 1. Generate detailed analysis of the search image
       const searchImageAnalysis = await this.generateDetailedImageAnalysis(imageInput);
@@ -946,9 +943,8 @@ User question: "${userQuery}"`);
       // 2. Perform parallel searches
       const [visualResults, semanticResults] = await Promise.all([
         this.searchByImageBuffer(imageInput, limit),
-        this.ragSearch(
-          Product,
-          JSON.stringify(searchImageAnalysis),
+        this.searchProductEmbedding(
+          searchImageAnalysis,
           limit
         )
       ]);
@@ -956,37 +952,39 @@ User question: "${userQuery}"`);
       // 3. Merge and rank results
       const combinedResults = [...visualResults, ...semanticResults];
 
+      console.log('combinedResults:', combinedResults);
+
       // 4. Get full product details for top results
       const topProductIds = combinedResults
-        .slice(0, limit)
+        // .slice(0, limit)
         .map(result => result.productId);
 
       const products = await Product.find({
         sourceId: { $in: topProductIds }
       });
 
-      // 5. Add search scores to product results
-      const enhancedProducts = products.map(product => {
-        const searchResult = combinedResults.find(
-          r => r.productId === product.sourceId
-        );
-        return {
-          ...product.toObject(),
-          searchScores: {
-            visualScore: searchResult.visualScore,
-            semanticScore: searchResult.semanticScore,
-            featureScore: searchResult.featureScore,
-            totalScore: searchResult.totalScore
-          }
-        };
-      });
+      // // 5. Add search scores to product results
+      // const enhancedProducts = products.map(product => {
+      //   const searchResult = combinedResults.find(
+      //     r => r.productId === product.sourceId
+      //   );
+      //   return {
+      //     ...product.toObject(),
+      //     searchScores: {
+      //       visualScore: searchResult.visualScore,
+      //       semanticScore: searchResult.semanticScore,
+      //       featureScore: searchResult.featureScore,
+      //       totalScore: searchResult.totalScore
+      //     }
+      //   };
+      // });
 
-      // Sort by total score
-      enhancedProducts.sort((a, b) =>
-        b.searchScores.totalScore - a.searchScores.totalScore
-      );
+      // // Sort by total score
+      // enhancedProducts.sort((a, b) =>
+      //   b.searchScores.totalScore - a.searchScores.totalScore
+      // );
 
-      return enhancedProducts;
+      return products;
     } catch (error) {
       console.error('Error in enhanced image search:', error);
       throw error;

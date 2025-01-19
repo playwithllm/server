@@ -58,8 +58,9 @@ async function populateProducts(multimodalProcessor) {
     const products = await parseProductsCSV('./products.csv');
     console.log(`Found ${products.length} products to process`);
 
-    const start = 11;
-    const end = 20;
+    // const customItemArray = products.slice(0, 10);
+    const start = 101;
+    const end = 1000;
     const customItemArray = products.slice(start, end);
 
     let index = start;
