@@ -170,7 +170,7 @@ class MultimodalProcessor {
       const imageBase64 = await this.convertImageToBase64(localImagePath);
       console.log('generateCaption(): imageBase64:', imageBase64.length);
       const prompts = []
-      const prompt = { role: 'user', content: [{ type: 'text', text: `Generate a caption for the following image titled: ${productName}` }] };
+      const prompt = { role: 'user', content: [{ type: 'text', text: `Generate a detailed caption in a single sentence for a product in this image, describing its type, color, material, and any notable features.` }] };
       if (localImagePath) {
         const img = {
           type: 'image_url',
@@ -196,8 +196,8 @@ class MultimodalProcessor {
   async expandTextWithVLLM(text) {
     console.log('expandTextWithVLLM(): text:', text);
     try {
-      const systemPrompt = `You are a precise product title interpreter. Your task is to expand product titles into clear, factual descriptions using only information directly stated or immediately implied in the title. Do not add marketing language, speculation, or features not mentioned. Respond with a single elaborated sentence.`;
-      const prompt = `Convert this product title into a clear descriptive sentence: "${text}"`;
+      const systemPrompt = `You are a product description optimizer. Your task is to enhance product titles by expanding them into meaningful, search-friendly sentences. Focus on including relevant details like product type, features, color, material, target audience, and popular use cases (e.g., Halloween, cosplay, parties, or events). Ensure the expansion remains concise, factually accurate, and avoids adding unverified claims. Always write the expansion as a single, well-constructed sentence.`;
+      const prompt = `Take the product title '${text}' and expand it into a meaningful, single-sentence description that includes relevant details about the product, such as type, color, features, target audience, and potential use cases.`;
       console.log('expandTextWithVLLM(): prompt:', prompt);
 
       const prompts = [{ role: 'system', content: systemPrompt }, { role: 'user', content: prompt }];
@@ -492,7 +492,7 @@ class MultimodalProcessor {
         output_fields: ['metadata']
       });
 
-      console.log('searchProductEmbedding(): searchResults:', searchResults);
+      console.log('searchProductEmbedding(): searchResults:', searchResults.results);
 
       // Process and rank results considering semantic similarity
       const processedData = searchResults.results
@@ -641,65 +641,69 @@ User question: "${userQuery}"`);
       // Get product IDs from results
       const productIds = searchResults.map(result => result.productId);
 
-      // Fetch full product details from MongoDB
-      const products = await Product.find({ sourceId: { $in: productIds } });
+      console.log('ragSearch(): productIds:', productIds);
 
-      // Prepare context for LLM
-      const context = products.map(p => `
-Product ID: ${p.sourceId}
-Name: ${p.name}
-Description: ${p.aboutProduct}
-Price: ${p.price}
-Category: ${p.category}
-Caption: ${p.caption}
-Expanded Text: ${p.expandedText}
-`).join('\n---\n');
+//       // Fetch full product details from MongoDB
+//       const products = await Product.find({ sourceId: { $in: productIds } });
 
-      const systemPrompt = `You are a helpful assistant that can search for products based on user queries.`;
+//       // Prepare context for LLM
+//       const context = products.map(p => `
+// Product ID: ${p.sourceId} \n
+// Name: ${p.name} \n
+// Category: ${p.category} \n
+// `).join('\n---\n');
 
-      // Generate LLM prompt
-      const prompt = `User Query: "${query}"
+//       const systemPrompt = `You are a helpful assistant that searches for products based on user queries. Your task is to analyze the user's query and find the most relevant products from the provided list. Prioritize products that are semantically similar to the query. Match on product type, category, or context, not just keywords. For example: 
+      
+//   - If the query mentions clothing-related terms like 'dress' or 'outfit,' prioritize products such as costumes, apparel, or accessories over unrelated items.
+//   - If the query mentions electronics, match devices, gadgets, or components that fit the context.
+//   - Always aim to identify the product(s) that best align with the intent of the query, even if the exact words do not match. Use all available product information, including names, descriptions, and image captions, to determine relevance.`;
 
-Available Products:
-${context}
+//       // Generate LLM prompt
+//       const prompt = `User Query: "${query}"
 
-Based on the user's query, analyze these products and return ONLY the product IDs that best match the query.
-Format your response as a comma-separated list of product IDs, nothing else.
-Example response format: ["123", "456", "789"]`;
+// Available Products:
+// ${context}
 
-      const prompts = [
-        {
-          role: 'system',
-          content: systemPrompt
-        },
-        {
-          role: 'user',
-          content: prompt
-        }
-      ]
+// Based on the user's query, analyze these products and return ONLY the product IDs that best match the query.
+// Format your response as a comma-separated list of product IDs, nothing else.
+// Example response format: ["123", "456", "789"]`;
 
-      // Get LLM response
-      const llmResponse = await this.generateCompletionSync(prompts);
+//       const prompts = [
+//         {
+//           role: 'system',
+//           content: systemPrompt
+//         },
+//         {
+//           role: 'user',
+//           content: prompt
+//         }
+//       ]
 
-      console.log('ragSearch(): LLM response:', llmResponse.choices[0].message);
+//       // Get LLM response
+//       const llmResponse = await this.generateCompletionSync(prompts);
 
-      // Extract product IDs from LLM response
-      const recommendedIds = llmResponse.choices[0].message.content
-        .split(',')
-        .map(id => id.trim())
-        .filter(Boolean);
+//       console.log('ragSearch(): LLM response:', llmResponse.choices[0].message);
 
-      console.log('ragSearch(): recommendedIds:', recommendedIds);
+//       // Extract product IDs from LLM response
+//       const recommendedIds = llmResponse.choices[0].message.content
+//         .split(',')
+//         .map(id => id.trim())
+//         .filter(Boolean);
+
+//       console.log('ragSearch(): recommendedIds:', recommendedIds);
 
       // Fetch final products in order of recommendation
       const finalProducts = await Product.find({
-        sourceId: { $in: recommendedIds }
+        sourceId: { $in: productIds }
       });
 
       // Sort products according to LLM's recommendation order
-      const sortedProducts = recommendedIds
+      const sortedProducts = productIds
         .map(id => finalProducts.find(p => p.sourceId === id))
         .filter(Boolean);
+
+      console.log('ragSearch(): sortedProducts:', sortedProducts.length);
 
       return sortedProducts;
     } catch (error) {

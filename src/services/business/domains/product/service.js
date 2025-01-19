@@ -168,6 +168,9 @@ const ragSearch = async (queryObject) => {
     }
 
     const searchText = String(query).trim();
+    logger.info(`ragSearch(): ${model} searched`, {
+      query: searchText
+    });
     const multimodalProcessor = new MultimodalProcessor();
     await multimodalProcessor.init();
     await multimodalProcessor.initializeCollection();

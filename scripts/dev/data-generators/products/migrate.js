@@ -29,23 +29,25 @@ async function processProductImage(multimodalProcessor, product) {
       : path.join(multimodalProcessor.storageConfig.baseImagePath, product.images[0]);
 
     // Generate both caption and detailed analysis
-    const [basicCaption, detailedAnalysis, imageEmbedding] = await Promise.all([
+    const [basicCaption, imageEmbedding] = await Promise.all([
       multimodalProcessor.generateCaption(product.id, imagePath, product.name),
-      multimodalProcessor.generateDetailedImageAnalysis(imagePath, product.name),
+      // multimodalProcessor.generateDetailedImageAnalysis(imagePath, product.name),
       multimodalProcessor.getImageEmbedding(imagePath)
     ]);
 
-    // Combine basic caption with detailed analysis
-    const imageAnalysis = {
-      basicCaption,
-      detailedAnalysis,
-      imagePath
-    };
+    // console.log('basicCaption:', basicCaption);
 
-    return { imageAnalysis, imageEmbedding };
+    // Combine basic caption with detailed analysis
+    // const imageAnalysis = {
+    //   basicCaption,
+    //   // detailedAnalysis,
+    //   imagePath
+    // };
+
+    return { basicCaption, imageEmbedding };
   } catch (error) {
     console.error(`Error processing image for product ${product.id}:`, error);
-    return { imageAnalysis: null, imageEmbedding: null };
+    return { basicCaption: null, imageEmbedding: null };
   }
 }
 
@@ -56,10 +58,14 @@ async function populateProducts(multimodalProcessor) {
     const products = await parseProductsCSV('./products.csv');
     console.log(`Found ${products.length} products to process`);
 
-    const customItemArray = products.slice(0, 10);
+    const start = 11;
+    const end = 20;
+    const customItemArray = products.slice(start, end);
 
+    let index = start;
     for (const product of customItemArray) {
       try {
+        console.log(`Processing product ${index++} of ${end}`);
         // Check both MongoDB and vector database
         const existingProduct = await getBySourceId(product.id);
         const existingVector = await multimodalProcessor.searchByMetadata({ productId: product.id });
@@ -72,19 +78,19 @@ async function populateProducts(multimodalProcessor) {
         console.log(`Processing product: ${product.id} - ${product.name}`);
 
         // Process image and get analysis
-        const { imageAnalysis, imageEmbedding } = await processProductImage(multimodalProcessor, product);
+        const { basicCaption, imageEmbedding } = await processProductImage(multimodalProcessor, product);
 
         // Get expanded text description
         const expandedText = await multimodalProcessor.expandTextWithVLLM(product.name);
 
-        console.log('imageAnalysis:', { imageAnalysis, expandedText });
+        console.log('imageAnalysis:', { basicCaption, expandedText });
 
         // Create or update MongoDB document
         if (!existingProduct) {
           const mongoProduct = {
             ...product,
             expandedText,
-            caption: `${imageAnalysis?.basicCaption} ${imageAnalysis?.detailedAnalysis}`
+            caption: `${basicCaption} ${expandedText}`
           };
           const result = await create(mongoProduct);
           console.log(`Created MongoDB document with ID: ${result._id}`);
@@ -95,9 +101,9 @@ async function populateProducts(multimodalProcessor) {
           // Combine product name, expanded text, and image analysis for text embedding
           const textToEmbed = [
             product.name,
-            // expandedText,
-            imageAnalysis?.basicCaption,
-            imageAnalysis?.detailedAnalysis,
+            expandedText,
+            product.category,
+            basicCaption,
           ].filter(Boolean).join(' ');
 
           console.log('textToEmbed:', textToEmbed);
@@ -113,9 +119,6 @@ async function populateProducts(multimodalProcessor) {
               image_vector: imageEmbedding,
               metadata: {
                 productId: product.id,
-                // name: product.name,
-                // imagePath: imageAnalysis?.imagePath,
-                // imageAnalysis: imageAnalysis,
                 created_at: new Date().toISOString()
               }
             }]
