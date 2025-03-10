@@ -14,7 +14,7 @@ const Migration = mongoose.model('__migrations__', migrationSchema);
 
 async function runMigrations() {
     await connectWithMongoDb();
-    const migrationsDir = path.join(__dirname, "migrations");
+    const migrationsDir = __dirname;
 
     console.log("Starting migration runner...", config.MONGODB_URI, config.DB_NAME);
 
