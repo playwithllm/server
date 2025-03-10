@@ -1,6 +1,5 @@
 const logger = require('../../../../../shared/libraries/log/logger');
 const Model = require('./schema');
-const Role = require('../role/schema');
 const { AppError } = require('../../../../../shared/libraries/error-handling/AppError');
 const crypto = require('crypto');
 

@@ -1,11 +1,11 @@
 const Joi = require('joi');
 
 const createSchema = Joi.object().keys({
-  prompt: Joi.string().required(),
+  name: Joi.string().optional(),
 });
 
 const searchSchema = Joi.object().keys({
-  keyword: Joi.string(),
+  keyword: Joi.string().optional(),
 });
 
 const idSchema = Joi.object().keys({

@@ -239,9 +239,11 @@ const getDashboardData = async (userId) => {
         $group: {
           _id: null,
           totalRequests: { $sum: 1 },
-          totalTokens: {
-            $sum: { $add: ['$result.prompt_eval_count', '$result.eval_count'] }
-          },
+          promptTokens: { $sum: '$result.prompt_tokens' },
+          completionTokens: { $sum: '$result.completion_tokens' },
+          totalTokens: { $sum: '$result.total_tokens' },
+          promptCost: { $sum: '$result.prompt_cost' },
+          completionCost: { $sum: '$result.completion_cost' },
           totalCost: { $sum: '$result.total_cost' }
         }
       },
@@ -249,8 +251,12 @@ const getDashboardData = async (userId) => {
         $project: {
           _id: 0,
           requestCount: '$totalRequests',
-          tokenCount: '$totalTokens',
-          costAmount: { $round: ['$totalCost', 4] }
+          promptTokens: '$promptTokens',
+          completionTokens: '$completionTokens',
+          totalTokens: '$totalTokens',
+          promptCost: { $round: ['$promptCost', 6] },
+          completionCost: { $round: ['$completionCost', 6] },
+          totalCost: { $round: ['$totalCost', 6] }
         }
       }
     ]);

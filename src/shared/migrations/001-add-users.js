@@ -1,8 +1,7 @@
-const User = require('../../services/auth/domains/admin/user/schema');
-const Role = require('../../services/auth/domains/admin/role/schema');
-const bcrypt = require('bcrypt');
-const config = require('../configs');
-const { ROLES } = require('./constants');
+const User = require("../../services/business/domains/admin/user/schema");
+const bcrypt = require("bcrypt");
+const config = require("../configs");
+const { ROLES } = require("./constants");
 
 async function insert(user) {
   try {
@@ -13,7 +12,6 @@ async function insert(user) {
       return;
     }
 
-    user.roleId = await Role.findOne({name: user.role});
     const result = await User.create(user);
     console.log(`Inserted ${user.displayName}`);
     return result;
@@ -24,11 +22,13 @@ async function insert(user) {
 }
 
 async function runMigration() {
-  console.log("Running migration: 003-add-users");
+  console.log("Running migration: 001-add-users");
 
   try {
     if (!config.SUPERADMIN_PASSWORD || !config.SUPERADMIN_EMAIL) {
-      throw new Error('SUPERADMIN_EMAIL and SUPERADMIN_PASSWORD environment variables are required');
+      throw new Error(
+        "SUPERADMIN_EMAIL and SUPERADMIN_PASSWORD environment variables are required"
+      );
     }
 
     // Hash the password
@@ -37,8 +37,8 @@ async function runMigration() {
 
     const superAdminUser = {
       email: config.SUPERADMIN_EMAIL,
-      displayName: 'Super Administrator',
-      authType: 'local',
+      displayName: "Super Administrator",
+      authType: "local",
       local: {
         username: config.SUPERADMIN_EMAIL,
         password: hashedPassword,
@@ -47,39 +47,39 @@ async function runMigration() {
       isVerified: true,
       isAdmin: true,
       isSuperAdmin: true,
-      role: 'superadmin'
+      role: "superadmin",
     };
 
     await insert(superAdminUser);
 
     const adminUser = {
-      email: 'admin@example.com',
-      displayName: 'Admin User',
-      authType: 'local',
+      email: "admin@example.com",
+      displayName: "Admin User",
+      authType: "local",
       local: {
-        username: 'admin@example.com',
-        password: await bcrypt.hash('password', salt),
+        username: "admin@example.com",
+        password: await bcrypt.hash("password", salt),
       },
       isDemo: true,
       isVerified: true,
       isAdmin: true,
-      role: ROLES.ADMIN
+      role: ROLES.ADMIN,
     };
 
     await insert(adminUser);
 
     const visitorUser = {
-      email: 'visitor@example.com',
-      displayName: 'Visitor User',
-      authType: 'local',
+      email: "visitor@example.com",
+      displayName: "Visitor User",
+      authType: "local",
       local: {
-        username: 'visitor@example.com',
-        password: await bcrypt.hash('password', salt),
+        username: "visitor@example.com",
+        password: await bcrypt.hash("password", salt),
       },
       isDemo: true,
       isVerified: true,
       isAdmin: false,
-      role: ROLES.VISITOR
+      role: ROLES.VISITOR,
     };
 
     await insert(visitorUser);
@@ -91,4 +91,4 @@ async function runMigration() {
   }
 }
 
-module.exports = { runMigration }; 
+module.exports = { runMigration };

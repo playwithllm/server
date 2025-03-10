@@ -3,13 +3,12 @@ const logger = require('../../../shared/libraries/log/logger');
 const eventEmitter = require('../../../shared/libraries/events/eventEmitter');
 
 const { updateById, getAllByApiKeyId, getById } = require('../../business/domains/inference/service');
-const { updateById: updateApiKeyUsage } = require('../../business/domains/apiKeys/service');
 
 const RABBITMQ_URL = 'amqp://localhost:5672';
 const INFERENCE_QUEUE = 'inference_queue';
 const BUSINESS_QUEUE = 'business_queue';
 
-const client = new RabbitMQClient(RABBITMQ_URL);
+let client;
 
 const inMemoryValue = {};
 
@@ -17,39 +16,142 @@ const eventEmitters = new Map();
 
 async function initialize() {
   try {
+    client = new RabbitMQClient(RABBITMQ_URL);
     await client.connect();
 
-    // Setup queues
-    await client.setupQueue(BUSINESS_QUEUE);
-    await client.setupQueue(INFERENCE_QUEUE);
+    const setupConsumers = async () => {
+      await client.setupQueue(INFERENCE_QUEUE);
+      await client.setupQueue(BUSINESS_QUEUE);
 
-    // Setup consumer for inference responses
-    await client.consumeMessage(BUSINESS_QUEUE, handleInferenceResponse);
+      // await client.consumeMessage(BUSINESS_QUEUE, async (request, msg, mqClient) => {
+      //   try {
+      //     // Your inference processing logic
+      //     console.log('Inference request received:', request._id, JSON.stringify(request));
+      //     await handleInferenceResponseOpenAI(request, msg, mqClient);
+      //   } catch (error) {
+      //     console.error('Error processing inference request:', error);
+      //   } finally {
+      //     mqClient.ack(msg);
+      //   }
+      // });
+      await client.consumeMessage(BUSINESS_QUEUE, handleInferenceResponseOpenAI);
+    };
 
-    logger.info('Business messaging initialized successfully');
+    // Handle connection events
+    client.connection.on('close', async () => {
+      console.warn('RabbitMQ connection closed, attempting to reconnect...');
+      setTimeout(initialize, 5000); // Retry connection after 5 seconds
+    });
+
+    client.connection.on('error', (err) => {
+      console.error('RabbitMQ connection error:', err);
+    });
+
+    await setupConsumers();
+    console.info('Business service messaging initialized');
   } catch (error) {
-    logger.error('Failed to initialize business messaging:', error);
-    throw error;
+    console.error('Failed to initialize RabbitMQ connection:', error);
+    setTimeout(initialize, 5000); // Retry connection after 5 seconds
   }
 }
 
-async function handleInferenceResponse(content, msg) {
+async function handleInferenceResponseOpenAI(chunk, msg, mqClient) {
   try {
-    // logger.info('handleInferenceResponse:', content);
-    // console.log('handleInferenceResponse\t', content);
+    console.log('handleInferenceResponseOpenAI:', chunk);
 
+    if (!inMemoryValue[chunk._id]) {
+      inMemoryValue[chunk._id] = '';
+    }
+
+    const isComplete = chunk?.result?.choices?.length === 0;
+    const chunkContent = chunk?.result?.choices[0]?.delta?.content || '';
+
+    if (isComplete) {
+      console.log('handleInferenceResponseOpenAI-isComplete:', chunk);
+
+      // calculate the cost from the usage coming from the response
+      /**
+       * 
+        prompt_tokens 3402
+        total_tokens 3474
+        completion_tokens 72
+      */
+
+      const prompt_tokens = chunk.result.usage?.prompt_tokens || 0;
+      const total_tokens = chunk.result.usage?.total_tokens || 0;
+      const completion_tokens = chunk.result.usage?.completion_tokens || 0;
+
+      const prompt_cost = prompt_tokens / 1e6;
+      const completion_cost = completion_tokens / 1e6;
+      const total_cost = prompt_cost + completion_cost;
+
+      const usage = {
+        ...chunk.result.usage,
+        prompt_cost,
+        completion_cost,
+        total_cost
+      };
+
+      // Handle completion
+      const updatedResult = {
+        id: chunk.result.id,
+        model: chunk.result.model,
+        created: chunk.result.created,        
+        timestamp: chunk.timestamp,        
+        ...usage
+      };
+
+      await updateById(chunk._id, {
+        response: inMemoryValue[chunk._id],
+        status: 'completed',
+        result: updatedResult
+      });
+
+      // Clear memory and emit completion events
+      inMemoryValue[chunk._id] = undefined;
+      eventEmitter.emit(
+        eventEmitter.EVENT_TYPES.INFERENCE_STREAM_CHUNK_END,
+        chunk
+      );
+
+      const emitter = eventEmitters.get(chunk._id);
+      if (emitter) {
+        emitter.emit('inferenceStreamChunkEnd', chunk);
+        eventEmitters.delete(chunk._id);
+      }
+    } else {
+      // Handle streaming chunk
+      inMemoryValue[chunk._id] += chunkContent;
+      eventEmitter.emit(
+        eventEmitter.EVENT_TYPES.INFERENCE_STREAM_CHUNK,
+        chunk
+      );
+
+      const emitter = eventEmitters.get(chunk._id);
+      if (emitter) {
+        emitter.emit('inferenceStreamChunk', chunk);
+      }
+    }
+
+    await mqClient.ack(msg);
+  } catch (error) {
+    logger.error('Error processing inference response:', error);
+    await mqClient.nack(msg, true);
+  }
+}
+
+async function handleInferenceResponseOllama(content, msg, mqClient) {
+  try {
+    console.log('handleInferenceResponse:', content._id);
+    console.log('handleInferenceResponse:', content.result);
     if (!inMemoryValue[content._id]) {
       inMemoryValue[content._id] = '';
     }
 
     if (content.done) {
-      // logger.info('Received inference response:', content);
       inMemoryValue[content._id] += content.result.message.content;
-      // console.log('emitting inference stream chunk end\t', { content, inMemoryValue });
-
       // To calculate how fast the response is generated in tokens per second (token/s), divide eval_count / eval_duration * 10^9.
       const tokensPerSecond = content.result.eval_count / content.result.eval_duration * 1e9;
-      console.log('Speed:', tokensPerSecond);
 
       // cost calculation: 1 BDT per 1M prompt tokens (prompt_eval_count), 2 BDT per 1M response tokens (eval_count)
       const inputCost = content.result.prompt_eval_count / 1e6;
@@ -59,7 +161,7 @@ async function handleInferenceResponse(content, msg) {
       // durations in seconds (total_duration, eval_duration, prompt_eval_duration)
       const prompt_eval_duration_in_seconds = content.result?.prompt_eval_duration ? content.result?.prompt_eval_duration / 1e9 : 0;
       const eval_duration_in_seconds = content.result?.eval_duration ? content.result?.eval_duration / 1e9 : 0;
-      const total_duration_in_seconds = content.result?.total_duration ? content.result?.total_duration / 1e9: 0;
+      const total_duration_in_seconds = content.result?.total_duration ? content.result?.total_duration / 1e9 : 0;
 
       const updatedResult = {
         ...content.result,
@@ -75,34 +177,6 @@ async function handleInferenceResponse(content, msg) {
 
       await updateById(content._id, { response: inMemoryValue[content._id], status: 'completed', result: updatedResult });
 
-      const updatedContent = await getById(content._id);
-
-      const inferenceItems = await getAllByApiKeyId(updatedContent.apiKeyId);
-      const totalRequests = inferenceItems.length;
-      const totalPromptEvalCount = inferenceItems.reduce((acc, item) => acc + item.result?.prompt_eval_count ? 0 : 0, 0);
-      const totalEvalCount = inferenceItems.reduce((acc, item) => acc + item.result?.eval_count ? 0 : 0, 0);
-      const totalCount = totalPromptEvalCount + totalEvalCount;
-      const totalPromptEvalCost = inferenceItems.reduce((acc, item) => acc + item.result?.prompt_eval_cost ? 0 : 0, 0);
-      const totalEvalCost = inferenceItems.reduce((acc, item) => acc + item.result?.eval_cost ? 0 : 0, 0);
-      const totalCosts = inferenceItems.reduce((acc, item) => acc + item.result?.total_cost ? 0 : 0, 0);
-      const totalDurations = inferenceItems.reduce((acc, item) => acc + (item.result?.total_duration_in_seconds ? 0 : 0), 0);
-
-      console.log('Total Requests:', inferenceItems.length);
-
-
-      // await updateApiKeyUsage(updatedContent.apiKeyId, {
-      //   usage: {
-      //     requests: totalRequests,
-      //     prompt_eval_count: totalPromptEvalCount,
-      //     eval_count: totalEvalCount,
-      //     total_count: totalCount,
-      //     prompt_eval_cost: totalPromptEvalCost,
-      //     eval_cost: totalEvalCost,
-      //     total_cost: totalCosts,
-      //     total_duration: totalDurations
-      //   }
-      // });
-
       // clear in-memory value
       inMemoryValue[content._id] = undefined;
       eventEmitter.emit(
@@ -117,8 +191,6 @@ async function handleInferenceResponse(content, msg) {
         eventEmitters.delete(content._id);
       }
     } else {
-      // logger.info('Received inference chunk response:', content);
-      // console.log('emitting inference stream chunk\t', { content, msg });
       inMemoryValue[content._id] += content.result.message.content;
       eventEmitter.emit(
         eventEmitter.EVENT_TYPES.INFERENCE_STREAM_CHUNK,
@@ -141,6 +213,12 @@ async function handleInferenceResponse(content, msg) {
 
 async function sendInferenceRequest(request, eventEmitter) {
   try {
+    // Check if connection is healthy before sending
+    if (!client?.connection?.connection?.readable) {
+      console.warn('RabbitMQ connection not ready, reinitializing...');
+      await initialize();
+    }
+
     if (eventEmitter) {
       eventEmitters.set(request._id.toString(), eventEmitter);
     }
@@ -149,6 +227,10 @@ async function sendInferenceRequest(request, eventEmitter) {
     logger.info('Sent inference request successfully');
   } catch (error) {
     logger.error('Failed to send inference request:', error);
+    // Clear the eventEmitter if request failed
+    if (eventEmitter) {
+      eventEmitters.delete(request._id.toString());
+    }
     throw error;
   }
 }

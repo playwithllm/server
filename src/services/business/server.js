@@ -18,7 +18,6 @@ const {
   addRequestIdMiddleware,
 } = require('../../shared/middlewares/request-context');
 const { connectWithMongoDb } = require('../../shared/libraries/db');
-const { AppError } = require('../../shared/libraries/error-handling/AppError');
 
 const businessMessaging = require('./messaging');
 
@@ -28,7 +27,7 @@ const { create, getAllByWebsocketId, getDashboardData } = require('./domains/inf
 let connection;
 let io;
 
-const createExpressApp = () => {
+const createExpressApp = async () => {
   const expressApp = express();
   expressApp.use(addRequestIdMiddleware);
   expressApp.use(helmet());
@@ -50,7 +49,7 @@ const createExpressApp = () => {
 
   logger.info('Express middlewares are set up');
 
-  defineRoutes(expressApp);
+  await defineRoutes(expressApp);
   defineErrorHandlingMiddleware(expressApp);
   return expressApp;
 };
@@ -62,15 +61,12 @@ const setupWebSocket = (server) => {
       methods: ['GET', 'POST'],
       credentials: true,
     },
+    maxPayload: 5 * 1024 * 1024, // 5MB in bytes
   });
 
   // INFERENCE_STREAM_CHUNK
   eventEmitter.on(eventEmitter.EVENT_TYPES.INFERENCE_STREAM_CHUNK, (data) => {
     const { connectionId, ...rest } = data;
-
-    // console.log('INFERENCE_STREAM_CHUNK connectionId', connectionId);
-    // Broadcast the inference response to the client that requested it
-    // io.emit('inferenceResponseChunk', data);
     io.to(connectionId).emit('inferenceResponseChunk', rest);
   });
 
@@ -79,7 +75,6 @@ const setupWebSocket = (server) => {
     eventEmitter.EVENT_TYPES.INFERENCE_STREAM_CHUNK_END,
     (data) => {
       const { connectionId, ...rest } = data;
-      // console.log('INFERENCE_STREAM_CHUNK_END connectionId', connectionId);
       io.to(connectionId).emit('inferenceResponseEnd', rest);
       logger.info('Broadcasted INFERENCE_STREAM_CHUNK_END to all clients');
     }
@@ -131,7 +126,7 @@ const setupWebSocket = (server) => {
     logger.info(`Client connected: ${socket.id}, IP: ${clientIp}`);
 
     // Handle client authentication
-    socket.on('authenticate', (token) => {
+    socket.on('authenticate', () => {
       // TODO: Implement authentication logic
       logger.info(`Client ${socket.id} attempting authentication`);
     });
@@ -145,12 +140,11 @@ const setupWebSocket = (server) => {
     socket.on('inferenceRequest', async (data) => {
       const user = socket.user;
       console.log('Authenticated user:', user);
-      console.log('Received message from:', socket.id, data);
+      console.log('Received message from:', socket.id);
 
       const keys = await getAllApiKeysByUserId(user._id);
       const activeKeys = keys.filter((key) => key.status === 'active');
       if (!activeKeys || activeKeys.length === 0) {
-        // throw new AppError('No active API keys found', 'No API keys found', 404);
         eventEmitter.emit(
           eventEmitter.EVENT_TYPES.DISABLE_CHAT,
           { connectionId: socket.id, message: 'No active API keys found. Please create an API key first.' }
@@ -158,16 +152,12 @@ const setupWebSocket = (server) => {
       }
 
       const key = activeKeys[0];
-      // console.log('key', key);
 
       // save to database
-      const savedItem = await create({ prompt: data.message, websocketId: socket.id, modelName: 'llama3.2-1B', inputTime: new Date(), userId: user._id, clientIp, apiKeyId: key._id.toString() });
+      const savedItem = await create({ prompt: data.message, websocketId: socket.id, modelName: 'OpenGVLab/InternVL2_5-1B', inputTime: new Date(), userId: user._id, clientIp, apiKeyId: key._id.toString(), imageBase64: data.imageBase64 });
       // Handle the message
-      // console.log('saved item', { savedItem });
-
       const previousInferences = await getAllByWebsocketId(socket.id);
 
-      // console.log('previousInferences', previousInferences);
       // sum of item.result.prompt_eval_count
       const totalInputTokens = previousInferences.filter((item) => item.result?.prompt_eval_count).reduce((acc, item) => {
         return acc + item.result.prompt_eval_count;
@@ -203,11 +193,20 @@ const setupWebSocket = (server) => {
       }
 
       const chatMessagesForLLM = [];
-      chatMessagesForLLM.push({ role: 'assistant', content: 'You are a helpful assistant.' });
       if (previousInferences.length > 0) {
         previousInferences.forEach((item) => {
+          const prompt = { role: 'user', content: [{ type: 'text', text: item.prompt }] };
+          if (item.imageBase64) {
+            const img = {
+              type: 'image_url',
+              image_url: {
+                url: `data:image/jpeg;base64,${item.imageBase64}`
+              }
+            }
+            prompt.content.push(img);
+          }
           // user - item.prompt
-          chatMessagesForLLM.push({ role: 'user', content: item.prompt });
+          chatMessagesForLLM.push(prompt);
           // assistant - item.response
           if (item.response) {
             chatMessagesForLLM.push({ role: 'assistant', content: item.response });
@@ -224,7 +223,7 @@ const setupWebSocket = (server) => {
 
 async function startWebServer() {
   logger.info('Starting web server...');
-  const expressApp = createExpressApp();
+  const expressApp = await createExpressApp();
   const APIAddress = await openConnection(expressApp);
   logger.info(`Server is running on ${APIAddress.address}:${APIAddress.port}`);
 
@@ -263,7 +262,7 @@ async function openConnection(expressApp) {
 }
 
 function defineErrorHandlingMiddleware(expressApp) {
-  expressApp.use(async (error, req, res, next) => {
+  expressApp.use(async (error, req, res) => {
     // Note: next is required for Express error handlers
     if (error && typeof error === 'object') {
       if (error.isTrusted === undefined || error.isTrusted === null) {

@@ -3,21 +3,15 @@ const logger = require('../../../../../shared/libraries/log/logger');
 const { AppError } = require('../../../../../shared/libraries/error-handling/AppError');
 
 const {
-  create,
   search,
   count,
   getById,
-  updateById,
-  deleteById,
-  followUser,
   deactivateUser,
   activateUser,
   updateUserRole,
 } = require('./service');
 
 const {
-  createSchema,
-  updateSchema,
   idSchema,
   searchSchema,
   updateUserRoleSchema,

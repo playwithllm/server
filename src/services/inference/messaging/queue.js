@@ -2,10 +2,8 @@ const RabbitMQClient = require('../../../shared/libraries/util/rabbitmq');
 const logger = require('../../../shared/libraries/log/logger');
 const eventEmitter = require('../../../shared/libraries/events/eventEmitter');
 
-const { getAllByWebsocketId } = require('../../business/domains/inference/service');
-
-const { generateResponse, generateResponseStream, chatResponseStream } = require('../ollama');
-
+// const { generateResponse, chatResponseStream } = require('../ollama');
+const { generateCompletionWithImage } = require('../vllm/openai-vllm');
 const RABBITMQ_URL = 'amqp://localhost:5672';
 const INFERENCE_QUEUE = 'inference_queue';
 const BUSINESS_QUEUE = 'business_queue';
@@ -28,6 +26,13 @@ async function initialize() {
     client = new RabbitMQClient(RABBITMQ_URL);
     await client.connect();
 
+    // Add reconnection handling
+    client.connection.on('close', async () => {
+      logger.warn('RabbitMQ connection closed, attempting to reconnect...');
+      client = null; // Reset client so it can be recreated
+      setTimeout(initialize, 5000);
+    });
+
     // Setup queues
     await client.setupQueue(INFERENCE_QUEUE);
     await client.setupQueue(BUSINESS_QUEUE);
@@ -40,40 +45,33 @@ async function initialize() {
 
         const { connectionId, prompts, _id } = request;
 
-        // console.log('prompts', prompts, _id);
-
         if (!prompts || prompts.length === 0) {
           logger.error('No prompts provided for inference');
-          await mqClient.ack(msg);
+          await client.ack(msg);
           return;
         }
 
         try {
           // Create unique event handlers
           const handleStreamChunk = async (part) => {
-            // console.log('publishing chunk message from inf to biz', { part, connectionId })
+            console.log('handleStreamChunk:', part);
             await client.publishMessage(BUSINESS_QUEUE, {
               // originalRequest: content,
               result: part,
               timestamp: new Date().toISOString(),
-              done: part.done,
               connectionId,
               _id
             });
-
           };
 
           const handleStreamChunkEnd = async (part) => {
-            // console.log('publishing end message from inf to biz', { part, connectionId })
+            console.log('handleStreamChunkEnd:', part);
             await client.publishMessage(BUSINESS_QUEUE, {
-              // originalRequest: content,
               result: part,
               timestamp: new Date().toISOString(),
-              done: part.done,
               connectionId,
               _id
             });
-
           };
 
           // Attach scoped event listeners
@@ -87,8 +85,7 @@ async function initialize() {
             handleStreamChunkEnd
           );
 
-          // await generateResponseStream(content);
-          await chatResponseStream(prompts);
+          await generateCompletionWithImage(prompts);
 
           await mqClient.ack(msg);
 
@@ -97,12 +94,12 @@ async function initialize() {
           logger.error('Error processing inference:', error);
 
           await client.publishMessage(BUSINESS_QUEUE, {
-            originalRequest: content,
+            originalRequest: prompts,
             error: error.message,
             status: 'failed',
             timestamp: new Date().toISOString(),
           });
-
+          // Add connection check before nack
           await mqClient.nack(msg, true);
         }
       }
