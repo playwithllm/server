@@ -25,7 +25,7 @@ const clientEmitters = new Map();
 async function handleInferenceResponse(chunk, msg, mqClient) {
   try {
     const chunkId = chunk._id;
-    logger.debug('Received inference response:', { id: chunkId });
+    logger.info('Received inference response:', { id: chunkId, chunk });
 
     // Initialize response store for this chunk if needed
     if (!responseStore[chunkId]) {
@@ -34,6 +34,15 @@ async function handleInferenceResponse(chunk, msg, mqClient) {
 
     const isComplete = chunk?.result?.choices?.length === 0;
     const chunkContent = chunk?.result?.choices?.[0]?.delta?.content || '';
+
+    logger.info('Checking chunk completion status:', { 
+      id: chunkId,
+      isComplete,
+      hasChoices: Boolean(chunk?.result?.choices),
+      choicesLength: chunk?.result?.choices?.length,
+      resultStructure: chunk.result ? Object.keys(chunk.result) : 'no result',
+      chunkContent: chunkContent.substring(0, 20) + (chunkContent.length > 20 ? '...' : '')
+    });
 
     if (isComplete) {
       logger.info('Processing complete inference response:', { id: chunkId });
@@ -57,19 +66,34 @@ async function handleInferenceResponse(chunk, msg, mqClient) {
 
       // Prepare result data for storage
       const updatedResult = {
-        id: chunk.result.id,
-        model: chunk.result.model,
-        created: chunk.result.created,        
-        timestamp: chunk.timestamp,        
+        id: chunk.result?.id || `response-${Date.now()}`,
+        model: chunk.result?.model || 'unknown',
+        created: chunk.result?.created || Math.floor(Date.now() / 1000),        
+        timestamp: chunk.timestamp || new Date().toISOString(),        
         ...usage
       };
 
-      // Update database with complete response
-      await updateById(chunkId, {
-        response: responseStore[chunkId],
-        status: 'completed',
-        result: updatedResult
+      logger.info('Saving completed response to database:', { 
+        id: chunkId, 
+        model: updatedResult.model,
+        responseLength: responseStore[chunkId]?.length || 0,
+        tokens: updatedResult.total_tokens
       });
+
+      // Update database with complete response
+      try {
+        await updateById(chunkId, {
+          response: responseStore[chunkId] || '',
+          status: 'completed',
+          result: updatedResult
+        });
+        logger.info('Successfully saved response to database', { id: chunkId });
+      } catch (dbError) {
+        logger.error('Failed to save response to database:', { 
+          id: chunkId, 
+          error: dbError.message 
+        });
+      }
 
       // Clean up memory
       delete responseStore[chunkId];
@@ -163,7 +187,10 @@ async function sendInferenceRequest(request, clientEmitter) {
       clientEmitters.set(request._id.toString(), clientEmitter);
     }
     
-    logger.info('Publishing inference request to queue:', { id: request._id.toString() });
+    logger.info('Publishing inference request to queue:', { 
+      id: request._id.toString(), 
+      model: request.modelName 
+    });
     await client.publishMessage(INFERENCE_QUEUE, request);
     logger.info('Sent inference request successfully');
   } catch (error) {

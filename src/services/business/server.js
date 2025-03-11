@@ -154,7 +154,7 @@ const setupWebSocket = (server) => {
       const key = activeKeys[0];
 
       // save to database
-      const savedItem = await create({ prompt: data.message, websocketId: socket.id, modelName: 'OpenGVLab/InternVL2_5-1B', inputTime: new Date(), userId: user._id, clientIp, apiKeyId: key._id.toString(), imageBase64: data.imageBase64 });
+      const savedItem = await create({ prompt: data.message, websocketId: socket.id, modelName: 'OpenGVLab/InternVL2_5-1B-MPO', inputTime: new Date(), userId: user._id, clientIp, apiKeyId: key._id.toString(), imageBase64: data.imageBase64 });
       // Handle the message
       const previousInferences = await getAllByWebsocketId(socket.id);
 

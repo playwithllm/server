@@ -2,10 +2,9 @@ const axios = require('axios');
 const eventEmitter = require('../../../shared/libraries/events/eventEmitter');
 const logger = require('../../../shared/libraries/log/logger');
 
-// Available models
+// Available models mapping (model name -> vLLM model path)
 const MODEL = {
-  INTERN_VL2_5_1B_MPO: 'OpenGVLab/InternVL2_5-1B-MPO',
-  INTERN_VL2_5_1B: 'OpenGVLab/InternVL2_5-1B',
+  'InternVL2_5-1B-MPO': 'OpenGVLab/InternVL2_5-1B-MPO',
 };
 
 // vLLM server configuration
@@ -14,11 +13,15 @@ const VLLM_SERVER_URL = 'http://192.168.4.28:8000/v1';
 /**
  * Generate a completion using the vLLM API with streaming
  * @param {Array} prompts Array of message objects for the LLM
+ * @param {string} modelName The model to use for inference
  * @returns {Promise<Object>} Completion result
  */
-async function generateCompletionWithImage(prompts) {
+async function generateCompletion(prompts, modelName = 'InternVL2_5-1B-MPO') {
   try {
-    logger.info('Sending request to vLLM', { model: MODEL.INTERN_VL2_5_1B_MPO });
+    // Get vLLM model path from map or use the default
+    const vllmModel = MODEL[modelName] || MODEL['InternVL2_5-1B-MPO'];
+    
+    logger.info('Sending request to vLLM', { model: vllmModel, modelName });
     
     // Request configuration
     const response = await axios({
@@ -28,7 +31,7 @@ async function generateCompletionWithImage(prompts) {
         'Content-Type': 'application/json',
       },
       data: {
-        model: MODEL.INTERN_VL2_5_1B_MPO,
+        model: vllmModel,
         stream: true,
         stream_options: {
           include_usage: true
@@ -87,5 +90,5 @@ async function generateCompletionWithImage(prompts) {
 }
 
 module.exports = {
-  generateCompletionWithImage
+  generateCompletion
 };

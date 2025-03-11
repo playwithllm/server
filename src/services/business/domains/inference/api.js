@@ -34,7 +34,7 @@ const model = 'Inference';
 async function handleGenerateRequest(req, res, next) {
   const prompt = req.body.prompt;
   const apiKey = req.headers['x-api-key'];
-  const modelName = req.body.model || 'llama3.2-1B';
+  const modelName = req.body.model || 'llama3.2';
   
   if (!prompt) {
     return res.status(400).json({ message: 'Prompt is required' });
@@ -87,7 +87,34 @@ async function handleGenerateRequest(req, res, next) {
     
     // Stream chunks back to client
     streamEmitter.on('inferenceStreamChunk', async (part) => {
-      res.write(part.result.message.content);
+      // Attempt to extract content from various possible formats
+      let content = '';
+      
+      // Handle OpenAI-compatible format from vLLM
+      if (part.result?.choices?.[0]?.delta?.content) {
+        content = part.result.choices[0].delta.content;
+      } 
+      // Handle direct Ollama format 
+      else if (part.result?.message?.content) {
+        content = part.result.message.content;
+      }
+      // Try other potential Ollama formats
+      else if (part.result?.response) {
+        content = part.result.response;
+      }
+      
+      // Log for debugging but only the first 50 chars to keep logs clean
+      logger.debug('Stream chunk format:', { 
+        hasChoices: Boolean(part.result?.choices),
+        hasMessage: Boolean(part.result?.message),
+        hasResponse: Boolean(part.result?.response),
+        contentLength: content.length,
+        contentSample: content.substring(0, 50) + (content.length > 50 ? '...' : '')
+      });
+      
+      if (content) {
+        res.write(content);
+      }
     });
     
     // End stream on completion
@@ -99,7 +126,8 @@ async function handleGenerateRequest(req, res, next) {
     await businessMessaging.sendInferenceRequest({ 
       prompts: chatMessages, 
       connectionId: savedItem._id.toString(), 
-      _id: savedItem._id.toString() 
+      _id: savedItem._id.toString(),
+      modelName: modelName // Pass the model name to the inference service
     }, streamEmitter);
     
   } catch (error) {
