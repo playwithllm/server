@@ -9,7 +9,6 @@ const logger = require('../log/logger');
 
 const MODEL = {
   INTERN_VL2_5_1B_MPO: 'OpenGVLab/InternVL2_5-1B-MPO',
-  INTERN_VL2_5_1B: 'OpenGVLab/InternVL2_5-1B',
 };
 
 class MultimodalProcessor {

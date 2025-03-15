@@ -1,11 +1,11 @@
 const inferenceRoutes = require('./inference');
 const apiKeysRoutes = require('./apiKeys');
-const productRoutes = require('./product');
+const modelsRoutes = require('./models/api');
 
 const defineRoutes = async (expressRouter) => {
   inferenceRoutes(expressRouter);
   apiKeysRoutes(expressRouter);
-  await productRoutes(expressRouter);
+  expressRouter.use('/models', modelsRoutes.routes());
 };
 
 module.exports = defineRoutes;

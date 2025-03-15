@@ -1,6 +1,7 @@
 const express = require('express');
 const logger = require('../../../../shared/libraries/log/logger');
 const { AppError } = require('../../../../shared/libraries/error-handling/AppError');
+const EventEmitter = require('events');
 
 const {
   search,
@@ -8,16 +9,132 @@ const {
   getGroupedEvaluationCounts,
   getDashboardData,
   getAllByWebsocketId,
+  create
 } = require('./service');
 
 const {
   searchSchema,
+  generateSchema
 } = require('./request');
+
 const { validateRequest } = require('../../../../shared/middlewares/request-validate');
 const { logRequest } = require('../../../../shared/middlewares/log');
 const { isAuthorized } = require('../../../../shared/middlewares/auth/authorization');
+const { isValidKey } = require('../../domains/apiKeys/service');
+const businessMessaging = require('../../messaging');
 
 const model = 'Inference';
+
+/**
+ * Handle generation request from API clients
+ * @param {express.Request} req 
+ * @param {express.Response} res 
+ * @param {express.NextFunction} next 
+ */
+async function handleGenerateRequest(req, res, next) {
+  const prompt = req.body.prompt;
+  const apiKey = req.headers['x-api-key'];
+  const modelName = req.body.model || 'llama3.2';
+  
+  if (!prompt) {
+    return res.status(400).json({ message: 'Prompt is required' });
+  }
+
+  if (!apiKey) {
+    return res.status(401).json({ message: 'Unauthorized' });
+  }
+
+  try {
+    // Validate API key
+    const key = await isValidKey(apiKey);
+    if (!key) {
+      return res.status(403).json({ message: 'Forbidden' });
+    }
+
+    const userId = key.userId;
+
+    // Check token usage
+    const { tokenCount } = await getDashboardData(userId);
+    const TOKEN_LIMIT = 10000;
+
+    if (tokenCount >= TOKEN_LIMIT) {
+      return res.status(402).json({ 
+        message: `You have exceeded the free token limit (${TOKEN_LIMIT}) for today. Please try again tomorrow.` 
+      });
+    }
+
+    // Create inference record
+    const savedItem = (await create({ 
+      prompt, 
+      modelName, 
+      inputTime: new Date(), 
+      userId, 
+      apiKeyId: key._id.toString() 
+    })).toObject();
+
+    // Prepare prompt messages
+    const chatMessages = [
+      { role: 'assistant', content: 'You are a helpful assistant.' },
+      { role: 'user', content: prompt }
+    ];
+
+    // Set up streaming response
+    res.setHeader('Content-Type', 'text/plain');
+    res.setHeader('Transfer-Encoding', 'chunked');
+
+    // Create event emitter for streaming
+    const streamEmitter = new EventEmitter();
+    
+    // Stream chunks back to client
+    streamEmitter.on('inferenceStreamChunk', async (part) => {
+      // Attempt to extract content from various possible formats
+      let content = '';
+      
+      // Handle OpenAI-compatible format from vLLM
+      if (part.result?.choices?.[0]?.delta?.content) {
+        content = part.result.choices[0].delta.content;
+      } 
+      // Handle direct Ollama format 
+      else if (part.result?.message?.content) {
+        content = part.result.message.content;
+      }
+      // Try other potential Ollama formats
+      else if (part.result?.response) {
+        content = part.result.response;
+      }
+      
+      // Log for debugging but only the first 50 chars to keep logs clean
+      logger.debug('Stream chunk format:', { 
+        hasChoices: Boolean(part.result?.choices),
+        hasMessage: Boolean(part.result?.message),
+        hasResponse: Boolean(part.result?.response),
+        contentLength: content.length,
+        contentSample: content.substring(0, 50) + (content.length > 50 ? '...' : '')
+      });
+      
+      if (content) {
+        res.write(content);
+      }
+    });
+    
+    // End stream on completion
+    streamEmitter.on('inferenceStreamChunkEnd', async () => {
+      res.end();
+    });
+
+    // Send inference request to messaging service
+    await businessMessaging.sendInferenceRequest({ 
+      prompts: chatMessages, 
+      connectionId: savedItem._id.toString(), 
+      _id: savedItem._id.toString(),
+      modelName: modelName // Pass the model name to the inference service
+    }, streamEmitter);
+    
+  } catch (error) {
+    logger.error('Error in generate endpoint:', error);
+    next(new AppError('Failed to process generation request', 500, error));
+  }
+}
 
 const routes = () => {
   const router = express.Router();
@@ -91,4 +208,7 @@ const routes = () => {
   return router;
 };
 
-module.exports = { routes };
+module.exports = { 
+  routes,
+  handleGenerateRequest
+};
