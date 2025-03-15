@@ -21,7 +21,7 @@ async function defineRoutes(expressApp) {
   authRoutes(expressApp);
 
   // API generation endpoint with dedicated handler function
-  expressApp.post('/api/generate', handleGenerateRequest);
+  // expressApp.post('/api/generate', handleGenerateRequest);
 
   const businessRouter = express.Router();
   await domainRoutes(businessRouter);

@@ -29,8 +29,7 @@ const LOG_LEVELS = {
 // Define sensitive data patterns to redact
 const SENSITIVE_PATTERNS = [
   { regex: /(password["']?\s*[:=]\s*["']?)(.+?)(["'])/gi, replacement: '$1[REDACTED]$3' },
-  { regex: /(authorization["']?\s*[:=]\s*["']?)(.+?)(["'])/gi, replacement: '$1[REDACTED]$3' },
-  { regex: /([A-Za-z0-9+/=]{40,})/g, replacement: '[POSSIBLE_TOKEN_REDACTED]' } // Detect potential tokens/keys
+  { regex: /(authorization["']?\s*[:=]\s*["']?)(.+?)(["'])/gi, replacement: '$1[REDACTED]$3' },  
 ];
 
 /**
@@ -68,11 +67,11 @@ class LogManager {
   constructor() {
     // Redact sensitive information from logs
     const redactSensitiveInfo = format((info) => {
-      if (typeof info.message === 'string') {
-        SENSITIVE_PATTERNS.forEach(pattern => {
-          info.message = info.message.replace(pattern.regex, pattern.replacement);
-        });
-      }
+      // if (typeof info.message === 'string') {
+      //   SENSITIVE_PATTERNS.forEach(pattern => {
+      //     info.message = info.message.replace(pattern.regex, pattern.replacement);
+      //   });
+      // }
       
       // Handle objects in metadata
       if (info.metadata && typeof info.metadata === 'object') {
@@ -217,7 +216,7 @@ class LogManager {
     
     Object.keys(obj).forEach(key => {
       // Redact keys that might contain sensitive data
-      if (/password|token|key|secret|auth|credential/i.test(key)) {
+      if (/password|secret|credential/i.test(key)) {
         obj[key] = '[REDACTED]';
       } 
       // Recursively redact nested objects

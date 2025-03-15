@@ -185,8 +185,7 @@ async function sendInferenceRequest(request, clientEmitter) {
     }
 
     logger.info("Publishing inference request to queue:", {
-      id: request._id.toString(),
-      model: request.modelName,
+      request,
     });
     await client.publishMessage(INFERENCE_QUEUE, request);
     logger.info("Sent inference request successfully");

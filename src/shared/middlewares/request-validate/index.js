@@ -1,16 +1,23 @@
-const validator = require('validator');
+const validator = require("validator");
 
-const logger = require('../../libraries/log/logger');
-const { ValidationError } = require('../../libraries/error-handling/AppError');
+const logger = require("../../libraries/log/logger");
+const { ValidationError } = require("../../libraries/error-handling/AppError");
 
-function validateRequest({ schema, isParam = false, isQuery = false }) {
+function validateRequest({ schema, isParam = false, isQuery = false, skipEscape = false }) {
   return (req, res, next) => {
     const input = isParam ? req.params : isQuery ? req.query : req.body;
 
     // Sanitize inputs
-    for (let key in input) {
-      if (typeof input[key] === 'string') {
-        input[key] = validator.escape(input[key]);
+    if (!skipEscape) {
+      for (let key in input) {
+        // we don't want to escape the base64 encoded image
+        if (
+          typeof input[key] === "string" &&
+          !input[key].startsWith("data:image/") &&
+          !input[key].startsWith("data:application/")
+        ) {
+          input[key] = validator.escape(input[key]);
+        }
       }
     }
 

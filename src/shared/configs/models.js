@@ -1,8 +1,9 @@
 /**
  * Central configuration file for LLM models
- * This file serves as the single source of truth for all model configurations
- * All models added to the application should be defined here.
+ * This file loads model configurations from models.config.json
  */
+const fs = require('fs');
+const path = require('path');
 
 /**
  * @typedef {Object} ModelConfig
@@ -23,84 +24,18 @@
  */
 const OLLAMA_API_BASE = process.env.OLLAMA_API_BASE || 'http://localhost:11434/v1';
 
-/** @type {Object.<string, ModelConfig>} */
-const models = {
-  "llama3.2": {
-    name: "Llama 3.2",
-    provider: "ollama",
-    description: "Fast open-source large language model by Meta",
-    contextLength: 4096,
-    multimodal: false,
-    enabled: true,
-    parameters: "3B",
-    apiBase: OLLAMA_API_BASE,
-    capabilities: {
-      reasoning: "high",
-      coding: "medium",
-      conversation: "high"
-    }
-  },
-  "qwen2.5-coder": {
-    name: "Qwen 2.5 Coder",
-    provider: "ollama",
-    description: "Code-specialized model from Qwen, optimized for programming tasks",
-    contextLength: 8192,
-    multimodal: false,
-    enabled: true,
-    parameters: "7B",
-    apiBase: OLLAMA_API_BASE,
-    capabilities: {
-      reasoning: "high",
-      coding: "very high",
-      conversation: "medium"
-    }
-  },
-  "gemma3:12b": {
-    name: "Gemma 3 12B",
-    provider: "ollama",
-    description: "Google's Gemma 3 model with 12B parameters, supports vision inputs",
-    contextLength: 8192,
-    multimodal: true,
-    enabled: true,
-    parameters: "12B",
-    apiBase: OLLAMA_API_BASE,
-    capabilities: {
-      reasoning: "high",
-      vision: "high",
-      conversation: "high"
-    }
-  },
-  "hf.co/openbmb/MiniCPM-o-2_6-gguf:Q8_0": {
-    name: "MiniCPM-O 2.6",
-    provider: "ollama",
-    description: "MiniCPM model from OpenBMB with multimodal capabilities",
-    contextLength: 4096,
-    multimodal: true,
-    enabled: true,
-    parameters: "8B",
-    apiBase: OLLAMA_API_BASE,
-    capabilities: {
-      reasoning: "medium",
-      vision: "high",
-      conversation: "medium"
-    }
-  },
-  "deepseek-r1": {
-    name: "DeepSeek R1",
-    provider: "ollama",
-    description: "DeepSeek R1 language model with strong reasoning abilities",
-    contextLength: 8192,
-    multimodal: false,
-    enabled: true,
-    parameters: "7B",
-    apiBase: OLLAMA_API_BASE,
-    capabilities: {
-      reasoning: "very high",
-      coding: "high",
-      conversation: "medium"
-    }
-  },
-};
+// Load models from configuration file
+const configPath = path.join(__dirname, 'models.config.json');
+const modelConfig = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+
+// Add API base to all ollama models
+const models = Object.entries(modelConfig.models).reduce((acc, [id, model]) => {
+  if (model.provider === 'ollama') {
+    model.apiBase = OLLAMA_API_BASE;
+  }
+  acc[id] = model;
+  return acc;
+}, {});
 
 /**
  * Get all available models
@@ -130,7 +65,7 @@ function getModelById(modelId) {
  * @returns {string} ID of the default model
  */
 function getDefaultModelId() {
-  return "llama3.2";
+  return modelConfig.defaultModel || Object.keys(models)[0] || null;
 }
 
 /**

@@ -31,8 +31,8 @@ const createExpressApp = async () => {
   const expressApp = express();
   expressApp.use(addRequestIdMiddleware);
   expressApp.use(helmet());
-  expressApp.use(express.urlencoded({ extended: true }));
-  expressApp.use(express.json());
+  expressApp.use(express.urlencoded({ extended: true, limit: '10mb', }));
+  expressApp.use(express.json({ limit: '10mb' }));
   expressApp.use(cookieParser());
   expressApp.use(
     cors({
@@ -143,7 +143,7 @@ const setupWebSocket = (server) => {
       console.log('Received message from:', socket.id);
 
       const keys = await getAllApiKeysByUserId(user._id);
-      const activeKeys = keys.filter((key) => key.status === 'active');
+      const activeKeys = keys.filter((key) => key.name === "Default" && key.status === 'active');
       if (!activeKeys || activeKeys.length === 0) {
         eventEmitter.emit(
           eventEmitter.EVENT_TYPES.DISABLE_CHAT,
@@ -154,7 +154,7 @@ const setupWebSocket = (server) => {
       const key = activeKeys[0];
 
       // save to database
-      const savedItem = await create({ prompt: data.message, websocketId: socket.id, modelName: 'OpenGVLab/InternVL2_5-1B-MPO', inputTime: new Date(), userId: user._id, clientIp, apiKeyId: key._id.toString(), imageBase64: data.imageBase64 });
+      const savedItem = await create({ prompt: data.message, websocketId: socket.id, modelName: 'gemma3:12b', inputTime: new Date(), userId: user._id, clientIp, apiKeyId: key._id.toString(), imageBase64: data.imageBase64 });
       // Handle the message
       const previousInferences = await getAllByWebsocketId(socket.id);
 

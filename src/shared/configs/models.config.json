@@ -1,0 +1,75 @@
+{
+  "models": {
+    "llama3.2": {
+      "name": "Llama 3.2",
+      "provider": "ollama",
+      "description": "Fast open-source large language model by Meta",
+      "contextLength": 8192,
+      "multimodal": false,
+      "enabled": true,
+      "parameters": "3B",
+      "capabilities": {
+        "reasoning": "high",
+        "coding": "medium",
+        "conversation": "high"
+      }
+    },
+    "qwen2.5-coder": {
+      "name": "Qwen 2.5 Coder",
+      "provider": "ollama",
+      "description": "Code-specialized model from Qwen, optimized for programming tasks",
+      "contextLength": 8192,
+      "multimodal": false,
+      "enabled": true,
+      "parameters": "7B",
+      "capabilities": {
+        "reasoning": "high",
+        "coding": "very high",
+        "conversation": "medium"
+      }
+    },
+    "gemma3:12b": {
+      "name": "Gemma 3 12B",
+      "provider": "ollama",
+      "description": "Google's Gemma 3 model with 12B parameters, supports vision inputs",
+      "contextLength": 8192,
+      "multimodal": true,
+      "enabled": true,
+      "parameters": "12B",
+      "capabilities": {
+        "reasoning": "high",
+        "vision": "high",
+        "conversation": "high"
+      }
+    },
+    "hf.co/openbmb/MiniCPM-o-2_6-gguf:Q8_0": {
+      "name": "MiniCPM-O 2.6",
+      "provider": "ollama",
+      "description": "MiniCPM model from OpenBMB with multimodal capabilities",
+      "contextLength": 8192,
+      "multimodal": true,
+      "enabled": true,
+      "parameters": "8B",
+      "capabilities": {
+        "reasoning": "medium",
+        "vision": "high",
+        "conversation": "medium"
+      }
+    },
+    "deepseek-r1": {
+      "name": "DeepSeek R1",
+      "provider": "ollama",
+      "description": "DeepSeek R1 language model with strong reasoning abilities",
+      "contextLength": 8192,
+      "multimodal": false,
+      "enabled": true,
+      "parameters": "7B",
+      "capabilities": {
+        "reasoning": "very high",
+        "coding": "high",
+        "conversation": "medium"
+      }
+    }
+  },
+  "defaultModel": "llama3.2"
+}
