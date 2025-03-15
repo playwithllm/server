@@ -1,5 +1,5 @@
 {
-  "name": "nodejs-boilerplate",
+  "name": "playwithllm-server",
   "version": "1.1.1",
   "description": "[![License](https://img.shields.io/badge/license-MIT-blue.svg)](https://opensource.org/licenses/MIT)",
   "main": "index.js",
@@ -10,10 +10,13 @@
   "scripts": {
     "test": "jest",
     "test:watch": "jest --watch --verbose",
-    "start:auth": "nodemon src/services/auth/start.js",
     "start:business": "nodemon src/services/business/start.js",
     "start:inference": "nodemon src/services/inference/start.js",
-    "dev": "npm run start:business & npm run start:inference"
+    "dev": "npm run start:business & npm run start:inference",
+    "infra:up": "docker compose -p playwithllm -f docker/docker-compose-infra.yml up -d",
+    "infra:down": "docker compose -p playwithllm -f docker/docker-compose-infra.yml down",
+    "migration": "node src/shared/migrations/migration-runner.js",
+    "test:coverage": "jest --coverage"
   },
   "keywords": [],
   "author": "",
