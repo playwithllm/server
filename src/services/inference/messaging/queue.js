@@ -1,23 +1,20 @@
 const RabbitMQClient = require("../../../shared/libraries/util/rabbitmq");
 const logger = require("../../../shared/libraries/log/logger");
 const eventEmitter = require("../../../shared/libraries/events/eventEmitter");
-const { generateCompletion: generateCompletionVllm } = require("../vllm/openai-vllm");
-const { generateCompletion: generateCompletionOllama } = require("../ollama/openai-ollama");
+const {
+  generateCompletion: generateCompletionVllm,
+} = require("../vllm/openai-vllm");
+const {
+  generateCompletion: generateCompletionOllama,
+} = require("../ollama/openai-ollama");
+const modelsConfig = require("../../../shared/configs/models");
 
 // RabbitMQ configuration
-const RABBITMQ_URL = "amqp://localhost:5672";
-const INFERENCE_QUEUE = "inference_queue";
-const BUSINESS_QUEUE = "business_queue";
+const RABBITMQ_URL = process.env.RABBITMQ_URL || "amqp://localhost:5672";
+const INFERENCE_QUEUE = process.env.INFERENCE_QUEUE || "inference_queue";
+const BUSINESS_QUEUE = process.env.BUSINESS_QUEUE || "business_queue";
 
 let client = null;
-
-// Model to provider mapping
-const ModelProvidersMap = {
-  "llama3.2": "ollama",
-  "llama3.2-1B": "ollama", // Include both versions of the model name for compatibility
-  "qwen2.5-coder": "ollama",
-  "InternVL2_5-1B-MPO": "vllm",
-};
 
 /**
  * Route the request to the appropriate model provider
@@ -26,18 +23,17 @@ const ModelProvidersMap = {
  * @returns {Promise<Object>} Result of the model invocation
  */
 async function routeToModelProvider(modelName, prompts) {
-  // Default to vLLM if model not specified
-  const defaultModel = "InternVL2_5-1B-MPO";
+  // Get the default model if none specified
+  const defaultModel = modelsConfig.getDefaultModelId();
   const selectedModel = modelName || defaultModel;
 
-  // Get provider from map, default to vLLM if not found
-  const provider = ModelProvidersMap[selectedModel] || "vllm";
+  // Get provider from config, default to vLLM if not found
+  const provider = modelsConfig.getModelProvider(selectedModel);
 
   logger.info("Routing request to provider", {
     requestedModel: modelName,
     selectedModel: selectedModel,
     provider: provider,
-    availableModels: Object.keys(ModelProvidersMap),
   });
 
   // Route based on provider
@@ -121,11 +117,9 @@ async function handleInferenceRequest(request, msg, mqClient) {
     logger.info("Inference request processed successfully", {
       id: _id,
       model: modelName,
-      msg,
     });
   } catch (error) {
     logger.error("Error processing inference:", error);
-
     // Send error response back to business service
     await client.publishMessage(BUSINESS_QUEUE, {
       originalRequest: prompts,
@@ -134,7 +128,6 @@ async function handleInferenceRequest(request, msg, mqClient) {
       timestamp: new Date().toISOString(),
       _id,
     });
-
     // Negative acknowledge to requeue the message if possible
     await mqClient.nack(msg, true);
   }
@@ -148,21 +141,17 @@ async function initialize() {
     try {
       client = new RabbitMQClient(RABBITMQ_URL);
       await client.connect();
-
       // Add reconnection handling
       client.connection.on("close", async () => {
         logger.warn("RabbitMQ connection closed, attempting to reconnect...");
         client = null; // Reset client so it can be recreated
         setTimeout(initialize, 5000);
       });
-
       // Setup queues
       await client.setupQueue(INFERENCE_QUEUE);
       await client.setupQueue(BUSINESS_QUEUE);
-
       // Setup consumer for inference requests
       await client.consumeMessage(INFERENCE_QUEUE, handleInferenceRequest);
-
       logger.info("Inference service messaging initialized");
     } catch (error) {
       logger.error("Failed to initialize RabbitMQ:", error);
@@ -172,7 +161,14 @@ async function initialize() {
   }
 }
 
+/**
+ * Get available models with their configurations
+ */
+function getAvailableModels() {
+  return modelsConfig.getAllModels();
+}
+
 module.exports = {
   initialize,
-  ModelProvidersMap,
+  getAvailableModels,
 };

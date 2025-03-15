@@ -1,45 +1,43 @@
 const axios = require("axios");
 const eventEmitter = require("../../../shared/libraries/events/eventEmitter");
 const logger = require("../../../shared/libraries/log/logger");
-
-// Available models mapping (model name -> vLLM model path)
-const MODEL = {
-  "llama3.2": "llama3.2",
-  "qwen2.5-coder": "qwen2.5-coder",
-};
-
-// vLLM server configuration
-const OPENAI_OLLAMA_SERVER_URL = "http://localhost:11434/v1";
+const modelsConfig = require("../../../shared/configs/models");
 
 async function generateCompletion(prompts, modelName = "llama3.2") {
   try {
-    // Get vLLM model path from map or use the default
-    const ollamaModel = MODEL[modelName] || MODEL["llama3.2"];
+    // Get model path from map or use the default
+    const ollamaModel = modelsConfig.getModelById(modelName);
 
-    logger.info("Sending request to OLLAMA", { model: ollamaModel, modelName });
+    if (!ollamaModel) {
+      throw new Error(`Model ${modelName} not found`);
+    }
+
+    logger.info("Sending request to OLLAMA", { ollamaModel });
 
     // Request configuration
-    const response = await axios({
-      method: "post",
-      url: `${OPENAI_OLLAMA_SERVER_URL}/chat/completions`,
-      headers: {
-        "Content-Type": "application/json",
-      },
-      data: {
-        model: ollamaModel,
-        stream: true,
-        stream_options: {
-          include_usage: true,
+    try {
+      const response = await axios({
+        method: "post",
+        url: `${ollamaModel.apiBase}/chat/completions`,
+        headers: {
+          "Content-Type": "application/json",
         },
-        messages: prompts,
-      },
-      responseType: "stream",
-    });
+        data: {
+          model: modelName,
+          stream: true,
+          stream_options: {
+            include_usage: true,
+          },
+          messages: prompts,
+        },
+        responseType: "stream",
+        timeout: 30000, // 30 second timeout
+      });
 
-    // Process the stream
-    return new Promise((resolve, reject) => {
+      // Process the stream
+      return new Promise((resolve, reject) => {
       response.data.on("data", (chunk) => {
-        try {          
+        try {
           // Split the chunk into lines and process each line
           const lines = chunk.toString().split("\n");
 
@@ -99,6 +97,29 @@ async function generateCompletion(prompts, modelName = "llama3.2") {
         reject(error);
       });
     });
+    } catch (axiosError) {
+      // Handle network or API-specific errors
+      if (axiosError.response) {
+        // The server responded with a status code outside the 2xx range
+        logger.error("OLLAMA API error response:", {
+          status: axiosError.response.status,
+          data: axiosError.response.data,
+        });
+        throw new Error(`OLLAMA API error: ${axiosError.response.status} - ${JSON.stringify(axiosError.response.data)}`);
+      } else if (axiosError.request) {
+        // The request was made but no response was received
+        logger.error("No response received from OLLAMA API:", {
+          request: axiosError.request,
+        });
+        throw new Error("No response received from OLLAMA API. Please check if the service is running.");
+      } else {
+        // Something happened in setting up the request
+        logger.error("Error setting up OLLAMA API request:", {
+          message: axiosError.message,
+        });
+        throw new Error(`Error setting up OLLAMA request: ${axiosError.message}`);
+      }
+    }
   } catch (error) {
     logger.error("Error generating completion with OLLAMA", {
       error: error.message,
