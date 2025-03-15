@@ -8,51 +8,92 @@ const { Loggly } = require('winston-loggly-bulk');
 require('winston-daily-rotate-file');
 const argv = require('minimist')(process.argv);
 
-const LOG_DIR = 'logs';
+// Use absolute path for logs to ensure consistent location
+const LOG_DIR = path.resolve(process.cwd(), 'logs');
+
+// Ensure the log directory exists
+if (!fs.existsSync(LOG_DIR)) {
+  fs.mkdirSync(LOG_DIR, { recursive: true });
+}
+
 class LogManager {
   static instance;
   constructor() {
+    // Common format for all logs
+    const logFormat = format.combine(
+      format.timestamp({
+        format: 'YYYY-MM-DD HH:mm:ss',
+      }),
+      format.errors({ stack: true }),
+      format.splat(),
+      format.json(),
+      format((info) => {
+        const requestId = retrieveRequestId();
+        if (requestId) {
+          info.requestId = requestId;
+        }
+        return info;
+      })()
+    );
+
     this.logger = createLogger({
       level: 'info',
-      format: format.combine(
-        format.timestamp({
-          format: 'YYYY-MM-DD HH:mm:ss',
-        }),
-        format.errors({ stack: true }),
-        format.splat(),
-        format.json(),
-        format((info) => {
-          const requestId = retrieveRequestId();
-          if (requestId) {
-            info.requestId = requestId;
-          }
-          return info;
-        })()
-      ),
+      format: logFormat,
       transports: [
-        new transports.File({
-          filename: `${LOG_DIR}/error.log`,
-          level: 'error',
-        }),
-        new transports.File({ filename: `${LOG_DIR}/combined.log` }),
+        // Only keep two log files: app.log for all levels and error.log for errors
         new transports.DailyRotateFile({
-          level: 'info',
-          filename: `${LOG_DIR}/application-%DATE%.log`,
-          datePattern: 'YYYY-MM-DD-HH',
+          filename: path.join(LOG_DIR, 'app-%DATE%.log'),
+          datePattern: 'YYYY-MM-DD',
+          level: 'debug', // Capture all log levels
           zippedArchive: true,
-          maxSize: '20m',
+          maxSize: '50m',
           maxFiles: '14d',
+          auditFile: path.join(LOG_DIR, '.app-audit.json'), // Track rotated files
+        }),
+        new transports.DailyRotateFile({
+          filename: path.join(LOG_DIR, 'error-%DATE%.log'),
+          datePattern: 'YYYY-MM-DD',
+          level: 'error',
+          zippedArchive: true,
+          maxSize: '50m',
+          maxFiles: '30d', // Keep errors longer
+          auditFile: path.join(LOG_DIR, '.error-audit.json'),
         }),
       ],
+      // Don't exit on uncaught exceptions
+      exitOnError: false,
     });
 
+    // Add console transport in non-production environments
     if (argv.env !== 'production') {
       this.logger.add(
         new transports.Console({
-          format: format.combine(format.colorize(), format.simple()),
+          level: 'debug',
+          format: format.combine(
+            format.colorize(),
+            format.timestamp({
+              format: 'HH:mm:ss'
+            }),
+            format.printf(
+              info => `${info.timestamp} ${info.level}: ${info.message}`
+            )
+          ),
+        })
+      );
+    } else {
+      // In production, log less to console but still capture errors
+      this.logger.add(
+        new transports.Console({
+          level: 'warn',
+          format: format.combine(
+            format.colorize(),
+            format.simple()
+          ),
         })
       );
     }
+
+    // Add Loggly transport in production if configured
     const configPath = path.resolve(
       __dirname,
       '../../configs/config.production.json'
