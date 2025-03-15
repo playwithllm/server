@@ -1,7 +1,0 @@
-FROM node:20-alpine
-WORKDIR /app
-COPY package*.json ./
-COPY src/shared ./src/shared
-COPY src/services/inference ./src/services/inference
-RUN npm install --production
-CMD ["npm", "run", "start:inference"] 

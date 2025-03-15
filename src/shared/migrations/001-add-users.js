@@ -84,9 +84,9 @@ async function runMigration() {
 
     await insert(visitorUser);
 
-    console.log("Successfully completed migration 003");
+    console.log("Successfully completed migration - 001-add-users");
   } catch (error) {
-    console.error("Failed to complete migration 003:", error);
+    console.error("Failed to complete migration - 001-add-users", error);
     throw error;
   }
 }
