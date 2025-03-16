@@ -90,7 +90,7 @@ async function handleGenerateRequest(req, res, next) {
 
     // Check token usage
     const { tokenCount } = await getDashboardData(userId);
-    const TOKEN_LIMIT = 10000;
+    const TOKEN_LIMIT = process.env.TOKEN_LIMIT_PER_DAY || 10000;
 
     if (tokenCount >= TOKEN_LIMIT) {
       return res.status(402).json({
@@ -212,7 +212,7 @@ const routes = () => {
     validateRequest({ schema: searchSchema, isQuery: true }),
     async (req, res, next) => {
       try {
-        console.log("req", {
+        logger.debug("Processing search request", {
           url: req.url,
           query: req.query,
           originalUrl: req.originalUrl,

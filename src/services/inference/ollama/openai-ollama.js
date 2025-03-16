@@ -98,9 +98,9 @@ async function generateCompletion(prompts, modelName = "llama3.2") {
         });
       });
     } catch (axiosError) {
-      console.log("CLOG: OLLAMA API error response:", {
-        status: axiosError.response.status,
-        axiosError,
+      logger.error("OLLAMA API error response details:", {
+        status: axiosError.response?.status,
+        errorMessage: axiosError.message,
       });
       // Handle network or API-specific errors
       if (axiosError.response) {
@@ -133,10 +133,7 @@ async function generateCompletion(prompts, modelName = "llama3.2") {
       }
     }
   } catch (error) {
-    console.log("Error generating completion with OLLAMA", {
-      error,
-      message: error.message,
-    });
+    // Error is already logged in the following line, no need for console.log
     logger.error("Error generating completion with OLLAMA", {
       error,
       message: error.message,
