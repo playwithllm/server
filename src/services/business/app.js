@@ -20,8 +20,7 @@ async function defineRoutes(expressApp) {
   logger.info('Defining routes...');
   authRoutes(expressApp);
 
-  // API generation endpoint with dedicated handler function
-  expressApp.post('/api/generate', handleGenerateRequest);
+  // API endpoints will be mounted on /api/v1 below
 
   const businessRouter = express.Router();
   await domainRoutes(businessRouter);

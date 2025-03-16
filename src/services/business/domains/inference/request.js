@@ -14,7 +14,10 @@ const idSchema = Joi.object().keys({
 
 const generateSchema = Joi.object().keys({
   prompt: Joi.string().required(),
-  model: Joi.string().default('llama3.2-1B')
+  model: Joi.string().default('llama3.2'),
+  useDefaultApiKey: Joi.boolean().default(false),
+  image: Joi.string(),
+  apiKey: Joi.string(),
 });
 
 module.exports = { createSchema, searchSchema, idSchema, generateSchema };

@@ -8,7 +8,6 @@ const model = 'ApiKey';
 
 const SALT_ROUNDS = 10;
 
-
 const create = async (data) => {
   try {
     const apiKey = crypto.randomBytes(32).toString('hex');
@@ -88,6 +87,58 @@ const revokeById = async (id) => {
   }
 };
 
+/**
+ * Gets the default API key for a user or creates one if it doesn't exist
+ * @param {string} userId - The user's ID
+ * @returns {Promise<Object>} The API key object with _id and other properties
+ */
+const getOrCreateDefaultApiKey = async (userId) => {
+  try {
+    // First try to find an existing default key
+    const existingDefaultKey = await ApiKey.findOne({
+      userId,
+      name: "Default",
+      status: 'active',
+    });
+
+    // If we found a default key, return it
+    if (existingDefaultKey) {
+      logger.info(`getOrCreateDefaultApiKey(): Found existing default ${model} for user`, {
+        userId,
+        keyId: existingDefaultKey._id
+      });
+      return existingDefaultKey;
+    }
+
+    // Otherwise create a new default key
+    logger.info(`getOrCreateDefaultApiKey(): Creating new default ${model} for user`, { userId });
+    const apiKey = crypto.randomBytes(32).toString('hex');
+    const keyHash = await bcrypt.hash(apiKey, SALT_ROUNDS);
+    
+    const payload = new ApiKey({
+      name: "Default",
+      keyPrefix: apiKey.slice(0, 8),
+      hashedKey: keyHash,
+      salt: SALT_ROUNDS,
+      userId: userId,
+    });
+    
+    const savedItem = await payload.save();
+    logger.info(`getOrCreateDefaultApiKey(): Default ${model} created`, {
+      id: savedItem._id,
+      userId
+    });
+    
+    // Note: We're returning the full saved item object rather than creating
+    // a new object with the plaintext key, since we don't need the plaintext
+    // key in this use case
+    return savedItem;
+  } catch (error) {
+    logger.error(`getOrCreateDefaultApiKey(): Failed to get/create default ${model}`, error);
+    throw new AppError(`Failed to get/create default ${model}`, error.message);
+  }
+};
+
 const isValidKey = async (apiKey) => {
   const keyPrefix = apiKey.slice(0, 8);
   const item = await ApiKey.findOne({
@@ -111,4 +162,5 @@ module.exports = {
   deleteById,
   revokeById,
   isValidKey,
+  getOrCreateDefaultApiKey,
 };

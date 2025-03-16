@@ -1,7 +1,14 @@
 const RabbitMQClient = require("../../../shared/libraries/util/rabbitmq");
 const logger = require("../../../shared/libraries/log/logger");
 const eventEmitter = require("../../../shared/libraries/events/eventEmitter");
-const { updateById } = require("../domains/inference/service");
+const {
+  updateById: updateInferenceById,
+  getById: getInferenceById,
+} = require("../domains/inference/service");
+const {
+  getById: getApiKeyById,
+  updateById: updateApiKeyById,
+} = require("../domains/apiKeys/service");
 
 // RabbitMQ configuration
 const RABBITMQ_URL = process.env.RABBITMQ_URL || "amqp://localhost:5672";
@@ -45,47 +52,64 @@ async function handleInferenceResponse(chunk, msg, mqClient) {
     });
 
     if (isComplete) {
-      logger.info("Processing complete inference response:", { id: chunkId });
+      logger.info("Processing complete inference response:", {
+        id: chunkId,
+        result: chunk.result,
+      });
 
-      // Extract usage information
-      const prompt_tokens = chunk.result.usage?.prompt_tokens || 0;
-      const total_tokens = chunk.result.usage?.total_tokens || 0;
-      const completion_tokens = chunk.result.usage?.completion_tokens || 0;
+      // Calculate token costs using a fixed rate
+      const COST_PER_TOKEN = 1 / 1e6;
 
-      // Calculate costs (assuming $0.001 per 1M tokens)
-      const prompt_cost = prompt_tokens / 1e6;
-      const completion_cost = completion_tokens / 1e6;
-      const total_cost = prompt_cost + completion_cost;
-
+      // Extract usage data more safely with proper fallbacks
       const usage = {
-        ...chunk.result.usage,
-        prompt_cost,
-        completion_cost,
-        total_cost,
+        prompt_tokens: chunk.result?.usage?.prompt_tokens || 0,
+        completion_tokens: chunk.result?.usage?.completion_tokens || 0,
+        total_tokens: chunk.result?.usage?.total_tokens || 0,
       };
 
-      // Prepare result data for storage
+      // Calculate costs based on extracted tokens with 6 decimal precision
+      usage.prompt_cost = parseFloat(
+        (usage.prompt_tokens * COST_PER_TOKEN).toFixed(6)
+      );
+      usage.completion_cost = parseFloat(
+        (usage.completion_tokens * COST_PER_TOKEN).toFixed(6)
+      );
+      usage.total_cost = parseFloat(
+        (usage.prompt_cost + usage.completion_cost).toFixed(6)
+      );
+
+      const existingItem = await getInferenceById(chunkId);
+      const inputTime = existingItem.inputTime ?? existingItem.createdAt;
+      const duration = new Date(chunk.result.created * 1000) - inputTime;
+
+      // Prepare result data with proper timestamp handling
       const updatedResult = {
-        id: chunk.result?.id || `response-${Date.now()}`,
+        id: chunk.result?.id || chunkId,
+        object: chunk.result?.object || "chat.completion",
         model: chunk.result?.model || "unknown",
-        created: chunk.result?.created || Math.floor(Date.now() / 1000),
-        timestamp: chunk.timestamp || new Date().toISOString(),
+        system_fingerprint: chunk.result?.system_fingerprint,
+        created: chunk.result?.created
+          ? new Date(chunk.result.created * 1000)
+          : new Date(),
+        timestamp: new Date(), // Current processing timestamp
         ...usage,
+        duration,
       };
 
       logger.info("Saving completed response to database:", {
         id: chunkId,
         model: updatedResult.model,
         responseLength: responseStore[chunkId]?.length || 0,
-        tokens: updatedResult.total_tokens,
+        tokens: usage.total_tokens,
       });
 
       // Update database with complete response
       try {
-        await updateById(chunkId, {
+        await updateInferenceById(chunkId, {
           response: responseStore[chunkId] || "",
           status: "completed",
           result: updatedResult,
+          isCompleted: true,
         });
         logger.info("Successfully saved response to database", { id: chunkId });
       } catch (dbError) {
@@ -93,6 +117,25 @@ async function handleInferenceResponse(chunk, msg, mqClient) {
           id: chunkId,
           error: dbError.message,
         });
+      }
+
+      try {
+        const apiKey = await getApiKeyById(existingItem.apiKeyId);
+        logger.info("API key usage updated successfully:", { apiKey });
+        const existingUsage = apiKey.usage || {};
+        // update tokens, cost and duration
+        apiKey.usage = {
+          ...existingUsage,
+          tokens: (existingUsage.tokens || 0) + usage.total_tokens,
+          cost: (existingUsage.cost || 0) + usage.total_cost,
+          duration: (existingUsage.duration || 0) + duration,
+          requests: (existingUsage.requests || 0) + 1,
+        };
+
+        await updateApiKeyById(apiKey._id, { usage: apiKey.usage });
+        logger.info("API key usage updated successfully:", { apiKey });
+      } catch (error) {
+        logger.error("Failed to update API key usage:", error);
       }
 
       // Clean up memory
@@ -184,9 +227,8 @@ async function sendInferenceRequest(request, clientEmitter) {
       clientEmitters.set(request._id.toString(), clientEmitter);
     }
 
-    logger.info("Publishing inference request to queue:", {
-      id: request._id.toString(),
-      model: request.modelName,
+    logger.debug("Publishing inference request to queue:", {
+      id: request._id,
     });
     await client.publishMessage(INFERENCE_QUEUE, request);
     logger.info("Sent inference request successfully");

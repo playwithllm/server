@@ -1,8 +1,9 @@
 /**
  * Central configuration file for LLM models
- * This file serves as the single source of truth for all model configurations
- * All models added to the application should be defined here.
+ * This file loads model configurations from models.config.json
  */
+const fs = require('fs');
+const path = require('path');
 
 /**
  * @typedef {Object} ModelConfig
@@ -17,90 +18,39 @@
  * @property {string} [apiBase] - Base URL for the model's API
  */
 
-/**
- * Environment variable for API base URLs
- * These can be overridden in the environment config
- */
-const OLLAMA_API_BASE = process.env.OLLAMA_API_BASE || 'http://localhost:11434/v1';
-
-/** @type {Object.<string, ModelConfig>} */
-const models = {
-  "llama3.2": {
-    name: "Llama 3.2",
-    provider: "ollama",
-    description: "Fast open-source large language model by Meta",
-    contextLength: 4096,
-    multimodal: false,
-    enabled: true,
-    parameters: "3B",
-    apiBase: OLLAMA_API_BASE,
-    capabilities: {
-      reasoning: "high",
-      coding: "medium",
-      conversation: "high"
-    }
-  },
-  "qwen2.5-coder": {
-    name: "Qwen 2.5 Coder",
-    provider: "ollama",
-    description: "Code-specialized model from Qwen, optimized for programming tasks",
-    contextLength: 8192,
-    multimodal: false,
-    enabled: true,
-    parameters: "7B",
-    apiBase: OLLAMA_API_BASE,
-    capabilities: {
-      reasoning: "high",
-      coding: "very high",
-      conversation: "medium"
-    }
-  },
-  "gemma3:12b": {
-    name: "Gemma 3 12B",
-    provider: "ollama",
-    description: "Google's Gemma 3 model with 12B parameters, supports vision inputs",
-    contextLength: 8192,
-    multimodal: true,
-    enabled: true,
-    parameters: "12B",
-    apiBase: OLLAMA_API_BASE,
-    capabilities: {
-      reasoning: "high",
-      vision: "high",
-      conversation: "high"
-    }
-  },
-  "hf.co/openbmb/MiniCPM-o-2_6-gguf:Q8_0": {
-    name: "MiniCPM-O 2.6",
-    provider: "ollama",
-    description: "MiniCPM model from OpenBMB with multimodal capabilities",
-    contextLength: 4096,
-    multimodal: true,
-    enabled: true,
-    parameters: "8B",
-    apiBase: OLLAMA_API_BASE,
-    capabilities: {
-      reasoning: "medium",
-      vision: "high",
-      conversation: "medium"
-    }
-  },
-  "deepseek-r1": {
-    name: "DeepSeek R1",
-    provider: "ollama",
-    description: "DeepSeek R1 language model with strong reasoning abilities",
-    contextLength: 8192,
-    multimodal: false,
-    enabled: true,
-    parameters: "7B",
-    apiBase: OLLAMA_API_BASE,
-    capabilities: {
-      reasoning: "very high",
-      coding: "high",
-      conversation: "medium"
-    }
-  },
+// Default API base URLs that can be overridden in configs or env vars
+const DEFAULT_API_BASES = {
+  ollama: 'http://localhost:11434/v1',
+  vllm: 'http://localhost:8000/v1'
 };
+
+// Load models from configuration file
+const configPath = path.join(__dirname, 'models.config.json');
+const modelConfig = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+
+// Process provider configs from the model configuration
+const providerConfigs = modelConfig.providers || {};
+
+// Process models with appropriate API base URLs
+const models = Object.entries(modelConfig.models).reduce((acc, [id, model]) => {
+  const provider = model.provider;
+  
+  // API base priority: 
+  // 1. Environment variable (highest)
+  // 2. Model-specific apiBase in config
+  // 3. Provider-level apiBase in config
+  // 4. Default value (lowest)
+  if (!model.apiBase) {
+    const envVarName = `${provider.toUpperCase()}_API_BASE`;
+    model.apiBase = process.env[envVarName] || 
+                    providerConfigs[provider]?.apiBase || 
+                    DEFAULT_API_BASES[provider] || 
+                    null;
+  }
+  
+  acc[id] = model;
+  return acc;
+}, {});
 
 /**
  * Get all available models
@@ -130,7 +80,7 @@ function getModelById(modelId) {
  * @returns {string} ID of the default model
  */
 function getDefaultModelId() {
-  return "llama3.2";
+  return modelConfig.defaultModel || Object.keys(models)[0] || null;
 }
 
 /**

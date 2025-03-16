@@ -41,6 +41,24 @@ const schema = Joi.object({
   // redis configuration
   REDIS_HOST: Joi.string().required(),
   REDIS_PORT: Joi.number().required(),
+  
+  // Model service API endpoints - provider defaults
+  OLLAMA_API_BASE: Joi.string()
+    .pattern(/^(http:\/\/|https:\/\/)/)
+    .default('http://localhost:11434/v1'),
+  VLLM_API_BASE: Joi.string()
+    .pattern(/^(http:\/\/|https:\/\/)/)
+    .default('http://localhost:8000/v1'),
+    
+  // Can also use model-specific API bases in format MODEL_APIBASE_<MODEL_ID>
+  // Examples:
+  MODEL_APIBASE_LLAMA32: Joi.string()
+    .pattern(/^(http:\/\/|https:\/\/)/),
+  MODEL_APIBASE_GEMMA3_12B: Joi.string()
+    .pattern(/^(http:\/\/|https:\/\/)/),
+    
+  // Inference service settings
+  TOKEN_LIMIT_PER_DAY: Joi.number().min(0).default(10000),
 });
 
 module.exports = schema;
