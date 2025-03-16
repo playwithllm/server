@@ -1,0 +1,15 @@
+{
+  "models": {
+    "llama3.2": {
+      "name": "Llama 3.2",
+      "provider": "ollama",
+      "description": "Fast open-source large language model by Meta",
+      "contextLength": 8192,
+      "multimodal": false,
+      "enabled": true,
+      "parameters": "3B",
+      "apiBase": "http://localhost:11434/v1"
+    }
+  },
+  "defaultModel": "llama3.2"
+}

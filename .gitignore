@@ -130,6 +130,7 @@ dist
 config.development.json
 config.production.json
 config.test.json
+models.config.json
 
 # Debug emails
 **/debug/**
