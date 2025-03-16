@@ -198,10 +198,10 @@ const routes = () => {
   // Add the generate route with validation for the generate schema
   router.post(
     "/generate",
-    // logRequest({
-    //   sensitiveFields: [],
-    //   logBody: true
-    // }),
+    logRequest({
+      sensitiveFields: [],
+      logBody: false
+    }),
     validateRequest({ schema: generateSchema, skipEscape: true }),
     handleGenerateRequest
   );

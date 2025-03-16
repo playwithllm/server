@@ -1,7 +1,11 @@
 const RabbitMQClient = require("../../../shared/libraries/util/rabbitmq");
 const logger = require("../../../shared/libraries/log/logger");
 const eventEmitter = require("../../../shared/libraries/events/eventEmitter");
-const { updateById, getById } = require("../domains/inference/service");
+const {
+  updateById: updateInferenceById,
+  getById: getInferenceById,
+} = require("../domains/inference/service");
+const { getById: getApiKeyById, updateById: updateApiKeyById  } = require("../domains/apiKeys/service");
 
 // RabbitMQ configuration
 const RABBITMQ_URL = process.env.RABBITMQ_URL || "amqp://localhost:5672";
@@ -61,11 +65,17 @@ async function handleInferenceResponse(chunk, msg, mqClient) {
       };
 
       // Calculate costs based on extracted tokens with 6 decimal precision
-      usage.prompt_cost = parseFloat((usage.prompt_tokens * COST_PER_TOKEN).toFixed(6));
-      usage.completion_cost = parseFloat((usage.completion_tokens * COST_PER_TOKEN).toFixed(6));
-      usage.total_cost = parseFloat((usage.prompt_cost + usage.completion_cost).toFixed(6));
+      usage.prompt_cost = parseFloat(
+        (usage.prompt_tokens * COST_PER_TOKEN).toFixed(6)
+      );
+      usage.completion_cost = parseFloat(
+        (usage.completion_tokens * COST_PER_TOKEN).toFixed(6)
+      );
+      usage.total_cost = parseFloat(
+        (usage.prompt_cost + usage.completion_cost).toFixed(6)
+      );
 
-      const existingItem = await getById(chunkId);
+      const existingItem = await getInferenceById(chunkId);
       const inputTime = existingItem.inputTime ?? existingItem.createdAt;
       const duration = new Date(chunk.result.created * 1000) - inputTime;
 
@@ -92,7 +102,7 @@ async function handleInferenceResponse(chunk, msg, mqClient) {
 
       // Update database with complete response
       try {
-        await updateById(chunkId, {
+        await updateInferenceById(chunkId, {
           response: responseStore[chunkId] || "",
           status: "completed",
           result: updatedResult,
@@ -104,6 +114,25 @@ async function handleInferenceResponse(chunk, msg, mqClient) {
           id: chunkId,
           error: dbError.message,
         });
+      }
+
+      try {
+        const apiKey = await getApiKeyById(existingItem.apiKeyId);
+        logger.info("API key usage updated successfully:", { apiKey });
+        const existingUsage = apiKey.usage || {};
+        // update tokens, cost and duration
+        apiKey.usage = {
+          ...existingUsage,
+          tokens: (existingUsage.tokens || 0) + usage.total_tokens,
+          cost: (existingUsage.cost || 0) + usage.total_cost,
+          duration: (existingUsage.duration || 0) + duration,
+          requests: (existingUsage.requests || 0) + 1,
+        };
+
+        await updateApiKeyById(apiKey._id, { usage: apiKey.usage });
+        logger.info("API key usage updated successfully:", { apiKey });
+      } catch (error) {
+        logger.error("Failed to update API key usage:", error);
       }
 
       // Clean up memory

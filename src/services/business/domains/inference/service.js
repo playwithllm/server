@@ -155,7 +155,7 @@ const getAllByApiKeyId = async (apiKeyId) => {
 
 async function getGroupedEvaluationCounts(userId) {
   try {
-    console.log('getGroupedEvaluationCounts(): userId', userId);
+    logger.info(`getGroupedEvaluationCounts(): userId ${userId}`);
     const evaluationData = await Model.aggregate([
       {
         $match: {
@@ -175,23 +175,27 @@ async function getGroupedEvaluationCounts(userId) {
       {
         $group: {
           _id: '$formattedDate',
-          totalPromptEvalCount: {
-            $sum: { $ifNull: [ '$result.prompt_eval_count', 0 ] }
+          totalRequests: { $sum: 1 },
+          promptTokens: {
+            $sum: { $ifNull: ['$result.prompt_tokens', 0] }
           },
-          totalEvalCount: {
-            $sum: { $ifNull: [ '$result.eval_count', 0 ] }
+          completionTokens: {
+            $sum: { $ifNull: ['$result.completion_tokens', 0] }
           },
-          totalPromptEvalCost: {
-            $sum: { $ifNull: [ '$result.prompt_eval_cost', 0 ] }
+          totalTokens: {
+            $sum: { $ifNull: ['$result.total_tokens', 0] }
           },
-          totalEvalCost: {
-            $sum: { $ifNull: [ '$result.eval_cost', 0 ] }
+          promptCost: {
+            $sum: { $ifNull: ['$result.prompt_cost', 0] }
           },
-          totalCosts: {
-            $sum: { $ifNull: [ '$result.total_cost', 0 ] }
+          completionCost: {
+            $sum: { $ifNull: ['$result.completion_cost', 0] }
           },
-          totalDurationsInSeconds: {
-            $sum: { $ifNull: [ '$result.total_duration_in_seconds', 0 ] }
+          totalCost: {
+            $sum: { $ifNull: ['$result.total_cost', 0] }
+          },
+          totalDuration: {
+            $sum: { $ifNull: ['$result.duration', 0] }
           }
         }
       },
@@ -200,20 +204,22 @@ async function getGroupedEvaluationCounts(userId) {
         $project: {
           _id: 0,
           date: '$_id',
-          promptEvalCount: '$totalPromptEvalCount',
-          evalCount: '$totalEvalCount',
-          promptEvalCost: '$totalPromptEvalCost',
-          evalCost: '$totalEvalCost',
-          totalCost: '$totalCosts',
-          totalDurationInSeconds: '$totalDurationsInSeconds'
+          requestCount: '$totalRequests',
+          promptTokens: 1,
+          completionTokens: 1,
+          totalTokens: 1,
+          promptCost: { $round: ['$promptCost', 6] },
+          completionCost: { $round: ['$completionCost', 6] },
+          totalCost: { $round: ['$totalCost', 6] },
+          totalDurationInMs: '$totalDuration'
         }
       }
     ]);
-    console.log(evaluationData);
+    logger.debug('Evaluation data retrieved:', evaluationData);
     return evaluationData;
   } catch (error) {
-    console.error("Error aggregating evaluation counts:", error);
-    throw error;
+    logger.error("Error aggregating evaluation counts:", error);
+    throw new AppError("Failed to aggregate evaluation data", error.message);
   }
 }
 
