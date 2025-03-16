@@ -176,22 +176,22 @@ async function getGroupedEvaluationCounts(userId) {
         $group: {
           _id: '$formattedDate',
           totalPromptEvalCount: {
-            $sum: '$result.prompt_eval_count'
+            $sum: { $ifNull: [ '$result.prompt_eval_count', 0 ] }
           },
           totalEvalCount: {
-            $sum: '$result.eval_count'
+            $sum: { $ifNull: [ '$result.eval_count', 0 ] }
           },
           totalPromptEvalCost: {
-            $sum: '$result.prompt_eval_cost'
+            $sum: { $ifNull: [ '$result.prompt_eval_cost', 0 ] }
           },
           totalEvalCost: {
-            $sum: '$result.eval_cost'
+            $sum: { $ifNull: [ '$result.eval_cost', 0 ] }
           },
           totalCosts: {
-            $sum: '$result.total_cost'
+            $sum: { $ifNull: [ '$result.total_cost', 0 ] }
           },
           totalDurationsInSeconds: {
-            $sum: '$result.total_duration_in_seconds'
+            $sum: { $ifNull: [ '$result.total_duration_in_seconds', 0 ] }
           }
         }
       },
@@ -209,7 +209,6 @@ async function getGroupedEvaluationCounts(userId) {
         }
       }
     ]);
-
     console.log(evaluationData);
     return evaluationData;
   } catch (error) {

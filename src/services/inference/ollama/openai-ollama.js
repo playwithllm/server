@@ -14,11 +14,6 @@ async function generateCompletion(prompts, modelName = "llama3.2") {
 
     logger.info("Sending request to OLLAMA", { ollamaModel });
 
-    console.log("Sending request to OLLAMA", {
-      ollamaModel,
-      prompts: prompts[0],
-    });
-
     // Request configuration
     try {
       const response = await axios({
@@ -28,7 +23,7 @@ async function generateCompletion(prompts, modelName = "llama3.2") {
           "Content-Type": "application/json",
         },
         data: {
-          model: 'gemma3:12b',
+          model: modelName,
           stream: true,
           stream_options: {
             include_usage: true,
