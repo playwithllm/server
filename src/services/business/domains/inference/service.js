@@ -12,9 +12,6 @@ const create = async (data) => {
     logger.info(`create(): ${model} created`, {
       id: saved._id,
     });
-    logger.info(`create(): ${model} created [Dummy]`, {
-      data,
-    });
     return saved;
   } catch (error) {
     logger.error(`create(): Failed to create ${model}`, error);

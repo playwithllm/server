@@ -18,21 +18,36 @@ const path = require('path');
  * @property {string} [apiBase] - Base URL for the model's API
  */
 
-/**
- * Environment variable for API base URLs
- * These can be overridden in the environment config
- */
-const OLLAMA_API_BASE = process.env.OLLAMA_API_BASE || 'http://localhost:11434/v1';
+// Default API base URLs that can be overridden in configs or env vars
+const DEFAULT_API_BASES = {
+  ollama: 'http://localhost:11434/v1',
+  vllm: 'http://localhost:8000/v1'
+};
 
 // Load models from configuration file
 const configPath = path.join(__dirname, 'models.config.json');
 const modelConfig = JSON.parse(fs.readFileSync(configPath, 'utf8'));
 
-// Add API base to all ollama models
+// Process provider configs from the model configuration
+const providerConfigs = modelConfig.providers || {};
+
+// Process models with appropriate API base URLs
 const models = Object.entries(modelConfig.models).reduce((acc, [id, model]) => {
-  if (model.provider === 'ollama') {
-    model.apiBase = OLLAMA_API_BASE;
+  const provider = model.provider;
+  
+  // API base priority: 
+  // 1. Environment variable (highest)
+  // 2. Model-specific apiBase in config
+  // 3. Provider-level apiBase in config
+  // 4. Default value (lowest)
+  if (!model.apiBase) {
+    const envVarName = `${provider.toUpperCase()}_API_BASE`;
+    model.apiBase = process.env[envVarName] || 
+                    providerConfigs[provider]?.apiBase || 
+                    DEFAULT_API_BASES[provider] || 
+                    null;
   }
+  
   acc[id] = model;
   return acc;
 }, {});

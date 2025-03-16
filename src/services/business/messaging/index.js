@@ -5,7 +5,10 @@ const {
   updateById: updateInferenceById,
   getById: getInferenceById,
 } = require("../domains/inference/service");
-const { getById: getApiKeyById, updateById: updateApiKeyById  } = require("../domains/apiKeys/service");
+const {
+  getById: getApiKeyById,
+  updateById: updateApiKeyById,
+} = require("../domains/apiKeys/service");
 
 // RabbitMQ configuration
 const RABBITMQ_URL = process.env.RABBITMQ_URL || "amqp://localhost:5672";
@@ -224,8 +227,8 @@ async function sendInferenceRequest(request, clientEmitter) {
       clientEmitters.set(request._id.toString(), clientEmitter);
     }
 
-    logger.info("Publishing inference request to queue:", {
-      request,
+    logger.debug("Publishing inference request to queue:", {
+      id: request._id,
     });
     await client.publishMessage(INFERENCE_QUEUE, request);
     logger.info("Sent inference request successfully");

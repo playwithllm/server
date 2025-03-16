@@ -8,11 +8,7 @@
       "multimodal": false,
       "enabled": true,
       "parameters": "3B",
-      "capabilities": {
-        "reasoning": "high",
-        "coding": "medium",
-        "conversation": "high"
-      }
+      "apiBase": "http://192.168.4.106:11434/v1"
     },
     "qwen2.5-coder": {
       "name": "Qwen 2.5 Coder",
@@ -22,11 +18,7 @@
       "multimodal": false,
       "enabled": true,
       "parameters": "7B",
-      "capabilities": {
-        "reasoning": "high",
-        "coding": "very high",
-        "conversation": "medium"
-      }
+      "apiBase": "http://192.168.4.106:11434/v1"
     },
     "gemma3:12b": {
       "name": "Gemma 3 12B",
@@ -36,11 +28,7 @@
       "multimodal": true,
       "enabled": true,
       "parameters": "12B",
-      "capabilities": {
-        "reasoning": "high",
-        "vision": "high",
-        "conversation": "high"
-      }
+      "apiBase": "http://192.168.4.106:11434/v1"
     },
     "hf.co/openbmb/MiniCPM-o-2_6-gguf:Q8_0": {
       "name": "MiniCPM-O 2.6",
@@ -50,11 +38,7 @@
       "multimodal": true,
       "enabled": true,
       "parameters": "8B",
-      "capabilities": {
-        "reasoning": "medium",
-        "vision": "high",
-        "conversation": "medium"
-      }
+      "apiBase": "http://192.168.4.106:11434/v1"
     },
     "deepseek-r1": {
       "name": "DeepSeek R1",
@@ -64,11 +48,7 @@
       "multimodal": false,
       "enabled": true,
       "parameters": "7B",
-      "capabilities": {
-        "reasoning": "very high",
-        "coding": "high",
-        "conversation": "medium"
-      }
+      "apiBase": "http://192.168.4.106:11434/v1"
     }
   },
   "defaultModel": "llama3.2"
