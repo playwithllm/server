@@ -3,7 +3,7 @@
 **Getting Started**
 
 1. Clone this repository.
-2. Copy `.env.example` to `.env.development` and configure environment variables. Then copy the `config.example.json` file to `config.development.json` and configure the settings.
+2. Copy `.env.example` to `.env.development` and configure environment variables. Then copy the `config.example.json` file to `config.development.json` and configure the settings. Also, copy `src/shared/configs/models.config.example.json` to `src/shared/configs/models.config.json` and configure your models to match your Ollama server.
 3. Install dependencies with `npm install`.
 4. Ensure infrastructure is up and running. We need MongoDB and RabbitMQ installed.
     * To spin up MongoDB and RabbitMQ locally, you can use Docker Compose file inside `/docker/docker-compose-infra.yml`.
@@ -38,6 +38,36 @@
 
 6. Start client:
     * Visit `playwithllm/admin-ui` repository to setup and run the client.
+
+**Model Configuration**
+
+The application uses a configuration file to define available LLM models:
+
+1. Copy the example configuration: `cp src/shared/configs/models.config.example.json src/shared/configs/models.config.json`
+2. Edit `models.config.json` to match your Ollama setup:
+   - Update `apiBase` with your Ollama server address (e.g., `http://localhost:11434/v1`)
+   - Add/remove models based on what's available in your Ollama instance
+   - Set a `defaultModel` that exists in your configuration
+
+Example model configuration:
+```json
+{
+  "models": {
+    "llama3.2": {
+      "name": "Llama 3.2",
+      "provider": "ollama",
+      "description": "Fast open-source large language model by Meta",
+      "contextLength": 8192,
+      "multimodal": false,
+      "enabled": true,
+      "parameters": "3B",
+      "apiBase": "http://localhost:11434/v1"
+    }
+  },
+  "defaultModel": "llama3.2"
+}
+```
+
 **Testing**
 
 Run `npm test` to execute all tests, or `npm run test:watch` for watch mode.
