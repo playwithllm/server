@@ -1,6 +1,3 @@
-# This workflow will do a clean installation of node dependencies, cache/restore them, build the source code and run tests across different versions of node
-# For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-nodejs
-
 name: Ubuntu server deploy
 
 on:
@@ -12,7 +9,6 @@ on:
 
 jobs:
   build:
-    if: false
     runs-on: ubuntu-latest
 
     strategy:
@@ -31,7 +27,7 @@ jobs:
         run: echo '${{ secrets.CONFIG_TEST_JSON }}' > src/configs/config.test.json
 
       - name: Create .env.test
-        run: echo '${{ '' }}' > src/.env.test
+        run: echo '${{ secrets.CONFIG_TEST_JSON }}' > src/.env.test
 
       - name: Install dependencies
         run: npm install
@@ -45,20 +41,29 @@ jobs:
         with:
           host: ${{ secrets.SERVER_IP }}
           username: ${{ secrets.SERVER_USER }}
-          key: ${{ secrets.SSH_KEY }} # SSH_KEY is the private key of the ubuntu server, public key must go to authorized_keys file
+          key: ${{ secrets.SSH_KEY }}
           script: |
-            cd /var/www/playwithllm-server
-            export NVM_DIR=~/.nvm
-            source ~/.nvm/nvm.sh
-
-            # verifies the right Node.js version is in the environment
-            node -v # should print `v20.12.2`
-
-            # verifies the right NPM version is in the environment
-            npm -v # should print `10.5.0`
-
-            source ~/.bashrc
-            git pull origin main
-            npm install
-            npm run stop:prod
-            npm run start:prod
+            # Use home directory instead of /var/www which requires elevated permissions
+            mkdir -p ~/playwithllm/server
+            cd ~/playwithllm/server
+            
+            # If directory doesn't exist yet, clone the repo
+            if [ ! -d .git ]; then
+              git clone https://github.com/yourusername/playwithllm.git .
+            else
+              # Otherwise just pull the latest changes
+              git pull origin main
+            fi
+            
+            npm ci --production
+            
+            # Copy production config files
+            echo '${{ secrets.CONFIG_PRODUCTION_JSON }}' > src/shared/configs/config.production.json
+            
+            # Start/restart the services with PM2
+            # Use absolute paths to ensure PM2 can find the app
+            pm2 restart ~/playwithllm/server/src/index.js --name playwllm-business || pm2 start ~/playwithllm/server/src/index.js --name playwllm-business
+            pm2 restart ~/playwithllm/server/src/inference.js --name playwllm-inference || pm2 start ~/playwithllm/server/src/inference.js --name playwllm-inference
+            
+            # Verify services are running
+            pm2 status | grep playwllm
